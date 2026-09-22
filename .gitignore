@@ -1,0 +1,22 @@
+# Secrets and local config (never commit)
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# TheMealDB download cache and import output (not redistributed, spec section 9)
+backend/data/cache/
+backend/import_report.csv
+
+# macOS and editors
+.DS_Store
+.vscode/
+.idea/

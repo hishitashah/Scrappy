@@ -1,0 +1,23 @@
+# Local Postgres 17 for development and tests. Start with: docker compose up -d
+# The credentials below are for this local container only; production uses Neon.
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: scrappy
+      POSTGRES_PASSWORD: scrappy
+      POSTGRES_DB: scrappy
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Runs once, on first start with an empty volume: creates the scrappy_test database.
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scrappy -d scrappy"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  pgdata:
