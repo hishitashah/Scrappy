@@ -518,7 +518,7 @@ LIMIT :limit;
 
 **Steps**
 
-1. **Fetch.** Use httpx against `https://www.themealdb.com/api/json/v1/1/`, the free test key, which is allowed for development and educational use.
+1. **Fetch.** Use httpx2 (the maintained successor to httpx, which Starlette's test client also prefers) against `https://www.themealdb.com/api/json/v1/1/`, the free test key, which is allowed for development and educational use.
    - `list.php?i=list` returns the canonical ingredient list.
    - `search.php?f=a` through `f=z` (26 calls) return every meal with full details.
    - Responses are cached to a git-ignored file.

@@ -62,7 +62,12 @@ Some of these don't exist yet; create them as their milestone is reached.
 - TypeScript in strict mode. All HTTP goes through `src/api/client.ts`; all server
   state goes through TanStack Query hooks in `src/api/hooks.ts`.
 - Every feature ships with tests (spec section 10.6).
-- Small commits with imperative subject lines, on feature branches merged via pull request.
+- One branch per feature area (not per commit or per milestone), named
+  `m<milestone>/<area>`, e.g. `m1/database`. Small commits with imperative
+  subject lines; merge to `main` via pull request when the area is done
+  and all checks pass.
+- Never commit or push. When a change is ready, summarize what was done and give
+  the exact `git add` / `git commit` commands; the developer reviews, commits, and pushes.
 
 ## Definition of done
 
