@@ -1,0 +1,31 @@
+[project]
+name = "scrappy-backend"
+version = "0.1.0"
+description = "Scrappy API: pantry-based recipe matching"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.141.1",
+    "pydantic-settings>=2.15.0",
+    "uvicorn>=0.53.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.13.0",
+    "pytest>=9.1.1",
+    "ruff>=0.16.8",
+]
+
+# No [build-system]: the backend is an application run from this folder, not a
+# library, so uv only installs its dependencies and never builds a package.
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+# E/W: pycodestyle, F: pyflakes, I: import sorting, UP: modern syntax, B: likely bugs
+select = ["E", "W", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
