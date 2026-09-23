@@ -62,10 +62,10 @@ Some of these don't exist yet; create them as their milestone is reached.
 - TypeScript in strict mode. All HTTP goes through `src/api/client.ts`; all server
   state goes through TanStack Query hooks in `src/api/hooks.ts`.
 - Every feature ships with tests (spec section 10.6).
-- One branch per feature area (not per commit or per milestone), named
-  `m<milestone>/<area>`, e.g. `m1/database`. Small commits with imperative
-  subject lines; merge to `main` via pull request when the area is done
-  and all checks pass.
+- Trunk-based: `main` is always deployable. Work on short-lived branches named
+  `m<milestone>/<area>` (e.g. `m1/database`), opened as pull requests and merged
+  when the change works end to end and all checks pass. Split anything running
+  past ~2 days or ~400 changed lines. Small commits, imperative subject lines.
 - Never commit or push. When a change is ready, summarize what was done and give
   the exact `git add` / `git commit` commands; the developer reviews, commits, and pushes.
 

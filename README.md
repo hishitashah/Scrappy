@@ -65,10 +65,13 @@ cd backend
 uv sync
 cp .env.example .env
 
-# 3. Run the API: http://127.0.0.1:8000, interactive docs at /docs
+# 3. Create the tables
+uv run alembic upgrade head
+
+# 4. Run the API: http://127.0.0.1:8000, interactive docs at /docs
 uv run uvicorn app.main:app --reload
 
-# 4. Run tests, lint, and format checks
+# 5. Run tests, lint, and format checks
 uv run pytest
 uv run ruff check . && uv run ruff format --check .
 ```
