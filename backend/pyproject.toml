@@ -4,8 +4,11 @@ version = "0.1.0"
 description = "Scrappy API: pantry-based recipe matching"
 requires-python = ">=3.13"
 dependencies = [
+    "alembic>=1.20.0",
     "fastapi>=0.141.1",
+    "psycopg[binary]>=3.3.6",
     "pydantic-settings>=2.15.0",
+    "sqlalchemy>=2.0.54",
     "uvicorn>=0.53.0",
 ]
 
