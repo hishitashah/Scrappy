@@ -61,6 +61,9 @@ class Recipe(Base):
     # TheMealDB provides neither, so both stay empty in the MVP (spec section 4).
     total_minutes: Mapped[int | None] = mapped_column()
     servings: Mapped[int | None] = mapped_column()
+    # Null for imported recipes; the owner for AI-generated ones (F8, spec 10.12).
+    # Matching hides a generated recipe from everyone except this user.
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
