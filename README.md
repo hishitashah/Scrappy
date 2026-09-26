@@ -68,10 +68,13 @@ cp .env.example .env
 # 3. Create the tables
 uv run alembic upgrade head
 
-# 4. Run the API: http://127.0.0.1:8000, interactive docs at /docs
+# 4. Import the recipe catalog from TheMealDB (~11s; responses are cached)
+uv run python -m scripts.import_mealdb
+
+# 5. Run the API: http://127.0.0.1:8000, interactive docs at /docs
 uv run uvicorn app.main:app --reload
 
-# 5. Run tests, lint, and format checks
+# 6. Run tests, lint, and format checks
 uv run pytest
 uv run ruff check . && uv run ruff format --check .
 ```
