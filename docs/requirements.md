@@ -496,7 +496,8 @@ LIMIT :limit;
 - On success, it runs `INSERT INTO users (id) VALUES (:sub) ON CONFLICT DO NOTHING` and returns the `sub`.
 
 **`AUTH_MODE=shared`**
-- It skips token checks and returns the fixed user `shared-user`.
+- It skips token checks and returns the fixed user `shared-user`, upserting that row the same
+  way cognito mode upserts the `sub`, since pantry rows reference `users.id`.
 - This mode is used locally before Cognito exists, and briefly on the live site between the first deploy and the login milestone.
 - Settings validation refuses `shared` mode when `ENV=prod` unless `ALLOW_SHARED_MODE=true` is set. That flag is removed when login ships.
 

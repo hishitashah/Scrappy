@@ -1,11 +1,28 @@
 """FastAPI application entry point."""
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
+from app.routers import ingredients, pantry
 from app.schemas import HealthResponse
 from app.settings import get_settings
 
+settings = get_settings()
+
 app = FastAPI(title="Scrappy API")
+
+# CORS lives in exactly one place (spec 10.7): the Lambda Function URL handles it in
+# production, so enabling it here too would send duplicate headers that browsers reject.
+if settings.env == "local":
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:5173"],
+        allow_methods=["GET", "POST", "DELETE"],
+        allow_headers=["authorization", "content-type"],
+    )
+
+app.include_router(ingredients.router)
+app.include_router(pantry.router)
 
 
 @app.get("/health")
