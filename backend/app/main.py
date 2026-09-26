@@ -3,7 +3,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import ingredients, pantry
+from app.routers import ingredients, matches, pantry, recipes
 from app.schemas import HealthResponse
 from app.settings import get_settings
 
@@ -23,6 +23,8 @@ if settings.env == "local":
 
 app.include_router(ingredients.router)
 app.include_router(pantry.router)
+app.include_router(matches.router)
+app.include_router(recipes.router)
 
 
 @app.get("/health")

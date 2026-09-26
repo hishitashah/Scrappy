@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from app.auth import get_current_user
 from app.db import get_session
 from app.main import app
-from app.models import Ingredient, User
+from app.models import Ingredient, Recipe, RecipeIngredient, User
 
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL",
@@ -57,19 +57,62 @@ def session(engine: Engine) -> Iterator[Session]:
 
 
 @pytest.fixture
-def client(session: Session) -> Iterator[TestClient]:
+def test_user(session: Session) -> str:
+    """The user rows the API and the FK constraints need."""
+    session.add(User(id=TEST_USER_ID))
+    session.flush()
+    return TEST_USER_ID
+
+
+@pytest.fixture
+def client(session: Session, test_user: str) -> Iterator[TestClient]:
     """An API client that shares the test's session, so its writes roll back too.
 
     Auth is overridden with a fixed user id: token verification has its own tests.
     """
     app.dependency_overrides[get_session] = lambda: session
     app.dependency_overrides[get_current_user] = lambda: TEST_USER_ID
-    session.add(User(id=TEST_USER_ID))
-    session.flush()
     try:
         yield TestClient(app)
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def fixture_recipes(session: Session, catalog: dict[str, int]) -> dict[str, int]:
+    """The fixture catalog spec 10.2 names, so the worked example can be asserted exactly."""
+    recipes = {
+        "Boiled egg": ["egg", "water", "salt"],
+        "Egg fried rice": ["rice", "egg", "garlic", "oil", "salt", "soy sauce", "spring onion"],
+        "Fried chicken": ["chicken", "flour", "oil", "salt", "pepper"],
+        "Pancakes": ["flour"],
+    }
+    ingredient_ids = dict(catalog)
+    ids: dict[str, int] = {}
+    for index, (title, ingredient_names) in enumerate(recipes.items()):
+        recipe = Recipe(
+            source="themealdb", source_id=str(60000 + index), title=title, steps=["Cook."]
+        )
+        session.add(recipe)
+        session.flush()
+        for position, name in enumerate(ingredient_names):
+            if name not in ingredient_ids:
+                ingredient = Ingredient(name=name, display_name=name.title())
+                session.add(ingredient)
+                session.flush()
+                ingredient_ids[name] = ingredient.id
+            session.add(
+                RecipeIngredient(
+                    recipe_id=recipe.id,
+                    ingredient_id=ingredient_ids[name],
+                    measure="1",
+                    position=position,
+                )
+            )
+        ids[title] = recipe.id
+    session.flush()
+    catalog.update(ingredient_ids)
+    return ids
 
 
 @pytest.fixture
