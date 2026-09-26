@@ -123,6 +123,7 @@ def catalog(session: Session) -> dict[str, int]:
         Ingredient(name="garlic", display_name="Garlic"),
         Ingredient(name="rice", display_name="Rice"),
         Ingredient(name="salt", display_name="Salt"),
+        Ingredient(name="water", display_name="Water"),
     ]
     session.add_all(ingredients)
     session.flush()

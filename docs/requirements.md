@@ -81,7 +81,7 @@ into the MVP on September 26, 2026, as F7 and F8; see sections 10.11 and 10.12.
 
 ### 3.3 Explicitly out of scope
 
-Nutrition tracking and calorie counting. Meal planning calendars. Grocery delivery integration. Social features, sharing, comments, ratings. A native or mobile-optimized experience of any kind (see section 4). Camera or photo-based ingredient entry of any kind. Quantity or unit tracking of any kind (see section 4). Multi-user households sharing one pantry. Recipe authoring by users. Calls to any third-party API at runtime other than the Anthropic API, which F7 and F8 call from the backend only (see section 4). Any infrastructure with a fixed monthly cost. A custom domain (the default CloudFront URL is used). A shared or pre-filled demo account. Assumed pantry staples.
+Nutrition tracking and calorie counting. Meal planning calendars. Grocery delivery integration. Social features, sharing, comments, ratings. A native or mobile-optimized experience of any kind (see section 4). Camera or photo-based ingredient entry of any kind. Quantity or unit tracking of any kind (see section 4). Multi-user households sharing one pantry. Recipe authoring by users. Calls to any third-party API at runtime other than the Anthropic API, which F7 and F8 call from the backend only (see section 4). Any infrastructure with a fixed monthly cost. A custom domain (the default CloudFront URL is used). A shared or pre-filled demo account. Assumed pantry staples other than water (see section 4).
 
 ### 3.4 MVP definition of done
 
@@ -124,7 +124,9 @@ These are deliberate. Don't change them without updating this section.
 
 **Everything AI-generated says so.** Substitutions and generated recipes are labeled in the UI, because a suggestion from a model is a different kind of claim from a recipe a person wrote and an ingredient count computed in SQL.
 
-**Staples are not assumed.** Every ingredient in a recipe counts toward its total, including salt, oil, and water. Match percentages are therefore honest but often lower for simple recipes. The pantry editor shows a hint: "Tip: add basics like salt, oil, and water for more accurate matches."
+**Water is the only assumed staple.** Water comes out of a tap, so making the user type it adds nothing, and 150 of the catalog's 791 recipes call for it. Everything else — salt, oil, flour — is a real shopping decision and still has to be in the pantry to count, so match percentages stay honest. Water is never suggested by the autocomplete, since it always counts already, and the pantry editor shows a hint: "Tip: water is assumed. Add basics like salt and oil for more accurate matches."
+
+Assumed staples supplement a pantry; they never create one. A user with an empty pantry still matches nothing, because "you can make anything that only needs water" is not a useful answer. The list lives in `backend/app/staples.py`, mirrored by `ASSUMED_STAPLES` in the frontend's `ingredientFilter.ts`, and adding to it is a spec change.
 
 **Autocomplete filters in the browser.** The ingredient list is a few kilobytes, so the client downloads it once and filters locally. Calling the API per keystroke would cost six requests to type "garlic."
 
@@ -225,7 +227,7 @@ Desktop-only. No mobile breakpoints, no touch-specific interactions, no phone la
 | Screen | Route | Contents |
 |---|---|---|
 | Login | Shown whenever signed out | App name and a one-line pitch; Amplify's sign-in, create-account, and forgot-password forms |
-| Home | `/` | Header (app name, sign out); pantry editor with the basics hint; ranked results |
+| Home | `/` | Header: menu button (Home, Log out), app name, mascot; pantry editor with the basics hint; ranked results |
 | Recipe detail | `/recipes/:id` | Back link; photo; title; category and cuisine tags; ingredients with owned/missing marks; numbered steps; video and source links; "Suggest substitutions" for missing ingredients (F7), with results shown in a labeled panel |
 
 Generated recipes (F8) use the same detail route and layout, with an "AI-generated" badge in place of the category tags and no video or source link. The "no overlap" empty state on Home carries the button that creates one.
@@ -372,13 +374,14 @@ scrappy/
 
 ### 10.1 F1 — Pantry editing
 
-**Behavior.** A search box above a list of ingredient chips, with the basics hint below the search box. Typing shows up to 8 suggestions; Enter or a click adds one. Each chip has an × that removes it immediately.
+**Behavior.** A search box above a list of ingredient chips, with the basics hint ("Tip: water is assumed. Add basics like salt and oil for more accurate matches.") below the search box. Typing shows up to 8 suggestions; Enter or a click adds one. Each chip has an × that removes it immediately.
 
 **Frontend**
 
 - `PantryEditor` renders `IngredientCombobox`, the hint, and the chips.
 - `IngredientCombobox` uses Headless UI `Combobox`.
 - `useIngredients()` loads `GET /ingredients` once per session (`staleTime: Infinity`).
+- Assumed staples (section 4) are never offered as suggestions.
 - Filtering runs in the browser: strip any leading quantity/unit words from the query (a small stopword list: numbers, "a", "an", "cup", "cups", "tbsp", "tsp", "oz", "of", etc.), lowercase the remainder, match it against each ingredient's `name` and `aliases`, rank prefix matches first, exclude ingredients already in the pantry, and show the top 8.
 - When that yields nothing, fall back to a "Did you mean…?" list: rank the catalog by Levenshtein
   distance to the query and keep up to three within a distance of 1 for queries shorter than 5
@@ -443,13 +446,16 @@ Note: only `ingredient_id` is ever sent or stored for a pantry item. There is no
 
 **Backend**
 
-- `routers/matches.py` loads the current user's pantry ingredient IDs. If the pantry is empty, it returns `[]` without querying. Otherwise it calls `matching.find_matches(session, ingredient_ids, user_id, limit)`.
+- `routers/matches.py` loads the current user's pantry ingredient IDs. If the pantry is empty, it returns `[]` without querying — assumed staples never create matches on their own. Otherwise it adds the assumed staple IDs from `app/staples.py` and calls `matching.find_matches(session, ingredient_ids, user_id, limit)`.
+- `find_matches(session, ingredient_ids, user_id, limit, staple_ids)` takes the two sets separately: `:have` is the pantry plus the staples and drives the score, while `:pantry` is the pantry alone and decides which recipes qualify. With no staples passed it assumes nothing, which keeps it a pure function and keeps the worked example below stable.
 - `find_matches` executes this query (verified against Postgres with fixture data):
 
 ```sql
 WITH scored AS (
   SELECT r.id, r.title, r.image_url,
          count(*) FILTER (WHERE ri.ingredient_id = ANY(:have))           AS have,
+         -- what the user actually put in their pantry, ignoring assumed staples
+         count(*) FILTER (WHERE ri.ingredient_id = ANY(:pantry))         AS from_pantry,
          count(*)                                                          AS total,
          array_agg(i.display_name ORDER BY ri.position)
            FILTER (WHERE ri.ingredient_id <> ALL(:have))                  AS missing
@@ -464,7 +470,9 @@ SELECT id, title, image_url AS thumbnail_url, have, total,
        round(100.0 * have / total)::int AS match,
        coalesce(missing, '{}')          AS missing
 FROM scored
-WHERE have > 0
+-- An assumed staple raises a recipe's score but never qualifies it alone: water appears
+-- in 150 recipes, and listing all of them for an unrelated pantry is noise.
+WHERE from_pantry > 0
 ORDER BY match DESC, have DESC, title ASC
 LIMIT :limit;
 ```
@@ -484,6 +492,7 @@ LIMIT :limit;
 - The `total − have = len(missing)` invariant holds for every row.
 - An empty pantry returns `[]`.
 - A pantry whose ingredients appear in no recipe returns `[]`.
+- An assumed staple raises a recipe's score (a pantry of egg scores Boiled egg 2/3), but never qualifies one alone (a pantry of rice must not surface Boiled egg).
 
 ### 10.3 F4 — Recipe detail
 
@@ -497,7 +506,7 @@ LIMIT :limit;
 
 **API.** `GET /recipes/{id}` returns `{id, title, category, area, image_url, youtube_url, source_url, steps: [str], ingredients: [{id, display_name, measure, owned}]}`, or 404.
 
-**Backend.** `routers/recipes.py`. The `owned` flag is computed against the user's pantry. Ingredients are ordered by `recipe_ingredients.position`.
+**Backend.** `routers/recipes.py`. The `owned` flag is computed against the user's pantry plus the assumed staples, so water shows as owned without being a pantry row. Ingredients are ordered by `recipe_ingredients.position`.
 
 When at least one ingredient is missing, the page also shows the "Suggest substitutions" button described in 10.11. A generated recipe (F8) renders through the same page and component, with an "AI-generated" badge.
 

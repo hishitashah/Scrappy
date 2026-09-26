@@ -38,8 +38,10 @@ recipes ranked by how many of each recipe's ingredients they already have.
   or the frontend, and never use a model to rank or count: counting for facts, models for
   judgment (spec section 4).
 - No mobile/responsive layout, no camera or photo input, no quantity or unit tracking,
-  no demo account, no assumed staples. These are deliberate MVP exclusions (spec
-  section 4), not gaps to fill in.
+  no demo account. These are deliberate MVP exclusions (spec section 4), not gaps to
+  fill in.
+- Water is the only assumed staple (`backend/app/staples.py`, mirrored in the frontend's
+  `ingredientFilter.ts`). Adding another is a spec change, not a judgement call.
 
 ## Commands
 

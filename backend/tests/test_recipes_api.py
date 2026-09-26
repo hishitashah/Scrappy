@@ -16,6 +16,7 @@ def fill_pantry(session: Session, catalog: dict[str, int], *names: str) -> None:
 def test_matches_ranks_recipes(
     client: TestClient, session: Session, catalog: dict[str, int], fixture_recipes: dict[str, int]
 ) -> None:
+    """Water is assumed, so Boiled egg counts 2 of 3 and outranks Egg fried rice."""
     fill_pantry(session, catalog, "egg", "rice", "garlic")
 
     response = client.get("/matches")
@@ -23,10 +24,18 @@ def test_matches_ranks_recipes(
     assert response.status_code == 200
     body = response.json()
     assert [(row["title"], row["have"], row["total"], row["match"]) for row in body] == [
+        ("Boiled egg", 2, 3, 67),
         ("Egg fried rice", 3, 7, 43),
-        ("Boiled egg", 1, 3, 33),
     ]
-    assert body[0]["missing"] == ["Oil", "Salt", "Soy Sauce", "Spring Onion"]
+    assert body[0]["missing"] == ["Salt"]
+    assert body[1]["missing"] == ["Oil", "Salt", "Soy Sauce", "Spring Onion"]
+
+
+def test_assumed_water_never_creates_matches_on_its_own(
+    client: TestClient, fixture_recipes: dict[str, int]
+) -> None:
+    """An empty pantry stays empty: "anything that needs only water" is not an answer."""
+    assert client.get("/matches").json() == []
 
 
 def test_matches_is_empty_for_an_empty_pantry(
@@ -57,9 +66,10 @@ def test_recipe_detail_marks_owned_ingredients(
     assert body["title"] == "Boiled egg"
     assert body["steps"] == ["Cook."]
     # Ingredients come back in recipe order, not alphabetically.
+    # Water is owned without being in the pantry, because it is assumed (spec section 4).
     assert [(i["display_name"], i["owned"]) for i in body["ingredients"]] == [
         ("Egg", True),
-        ("Water", False),
+        ("Water", True),
         ("Salt", False),
     ]
     assert body["ingredients"][0]["measure"] == "1"
