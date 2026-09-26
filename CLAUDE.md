@@ -26,12 +26,17 @@ recipes ranked by how many of each recipe's ingredients they already have.
 ## Hard rules
 
 - Never create AWS resources with a fixed monthly cost (RDS, NAT Gateway, load
-  balancers, EC2, public IPv4, Route 53 hosted zones, Secrets Manager).
+  balancers, EC2, public IPv4, Route 53 hosted zones, Secrets Manager). The only
+  usage-priced service is the Anthropic API, capped at $5/month by the guardrails in
+  spec section 14; never weaken or bypass those guardrails.
 - Never commit secrets. Anything prefixed `VITE_` is public.
-- The running app never calls a third-party API. TheMealDB is used only by
-  `backend/scripts/import_mealdb.py`.
+- The running app calls exactly one third-party API: Anthropic, from the backend only,
+  for AI substitutions (F7) and recipe generation (F8), and only on an explicit user
+  action. TheMealDB is used only by `backend/scripts/import_mealdb.py`. No other runtime
+  third-party call, and no AI call from the frontend or from tests — tests stub the client.
 - Matching is the SQL query in `backend/app/matching.py`. Don't reimplement it in Python
-  or the frontend.
+  or the frontend, and never use a model to rank or count: counting for facts, models for
+  judgment (spec section 4).
 - No mobile/responsive layout, no camera or photo input, no quantity or unit tracking,
   no demo account, no assumed staples. These are deliberate MVP exclusions (spec
   section 4), not gaps to fill in.

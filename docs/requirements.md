@@ -1,6 +1,6 @@
 # Scrappy — Requirements and Technical Specification
 
-**Target ship date:** Wednesday, October 28, 2026
+**Target ship date:** Wednesday, November 11, 2026 (moved from October 28 when AI substitutions and recipe generation entered the MVP; see section 15)
 **Developer time:** about 10 hours/week
 
 This document is the source of truth for Scrappy's scope and design. Implement one milestone task or user story at a time. If implementation reality conflicts with this document, stop and propose a change to the document instead of silently diverging. Anything marked post-MVP is out of scope until the MVP ships.
@@ -32,8 +32,8 @@ Most recipe sites start from a recipe and send the user shopping. Scrappy invert
 
 | Constraint | Value |
 |---|---|
-| Budget | $0/month after AWS credits run out (see section 14) |
-| Time | 10 hours/week; MVP complete by October 28, 2026 |
+| Budget | No fixed monthly cost after AWS credits run out, plus AI usage capped at $5/month (see section 14) |
+| Time | 10 hours/week; MVP complete by November 11, 2026 |
 | Platform | Desktop web only — see section 4 |
 | Development machine | macOS |
 | AWS region | us-east-1 |
@@ -54,6 +54,8 @@ Most recipe sites start from a recipe and send the user shopping. Scrappy invert
 | F4 | Recipe detail | Ingredients with measurements (owned ones marked), numbered steps, photo, category, cuisine, and video/source links |
 | F5 | Accounts | Sign up, log in, log out, and reset password. The entire app requires login. |
 | F6 | Saved pantry | Each user's pantry is stored in the database and loads on login |
+| F7 | AI substitutions | For a recipe's missing ingredients, suggest what to use instead, preferring what's in the pantry |
+| F8 | AI recipe generation | When nothing matches, generate a recipe from the user's exact pantry and save it to their account |
 
 **Engineering**
 
@@ -68,29 +70,31 @@ Most recipe sites start from a recipe and send the user shopping. Scrappy invert
 
 ### 3.2 Post-MVP backlog (in priority order)
 
-1. AI ingredient substitutions
-2. Favorites
-3. AI recipe generation when nothing matches
-4. Ingredient hierarchy, so "chicken" matches recipes that need "chicken breast"
-5. End-to-end browser tests (Playwright)
-6. Least-privilege permissions for the CI deploy role
-7. Cook history, shopping list, dietary filters, expiry nudges, personalization
+1. Favorites
+2. Ingredient hierarchy, so "chicken" matches recipes that need "chicken breast"
+3. End-to-end browser tests (Playwright)
+4. Least-privilege permissions for the CI deploy role
+5. Cook history, shopping list, dietary filters, expiry nudges, personalization
 
-Stories for these are in Appendix A.
+Stories for these are in Appendix A. AI substitutions and AI recipe generation were promoted
+into the MVP on September 26, 2026, as F7 and F8; see sections 10.11 and 10.12.
 
 ### 3.3 Explicitly out of scope
 
-Nutrition tracking and calorie counting. Meal planning calendars. Grocery delivery integration. Social features, sharing, comments, ratings. A native or mobile-optimized experience of any kind (see section 4). Camera or photo-based ingredient entry of any kind. Quantity or unit tracking of any kind (see section 4). Multi-user households sharing one pantry. Recipe authoring by users. Calls to any third-party API at runtime. Any infrastructure with a fixed monthly cost. A custom domain (the default CloudFront URL is used). A shared or pre-filled demo account. Assumed pantry staples.
+Nutrition tracking and calorie counting. Meal planning calendars. Grocery delivery integration. Social features, sharing, comments, ratings. A native or mobile-optimized experience of any kind (see section 4). Camera or photo-based ingredient entry of any kind. Quantity or unit tracking of any kind (see section 4). Multi-user households sharing one pantry. Recipe authoring by users. Calls to any third-party API at runtime other than the Anthropic API, which F7 and F8 call from the backend only (see section 4). Any infrastructure with a fixed monthly cost. A custom domain (the default CloudFront URL is used). A shared or pre-filled demo account. Assumed pantry staples.
 
 ### 3.4 MVP definition of done
 
 A new visitor can open the public URL on a laptop, create an account, add and remove ingredients with autocomplete, see ranked matches with the missing ingredients named, open a recipe, and sign out and back in to find the pantry intact.
 
+They can also ask for substitutions for a recipe's missing ingredients, and generate a recipe
+from their pantry when nothing matches. Both are labeled AI-generated.
+
 In addition:
 - Every merge to `main` deploys automatically through CI/CD.
 - All AWS infrastructure is defined in Terraform.
-- Hosting costs $0/month.
-- The README documents the architecture and key decisions.
+- Hosting has no fixed monthly cost, and AI usage is capped at $5/month (section 14).
+- The README documents the architecture, the key decisions, and the AI cost controls.
 
 ---
 
@@ -98,19 +102,27 @@ In addition:
 
 These are deliberate. Don't change them without updating this section.
 
-**Recipe data is imported once; the app never calls a third-party API at runtime.** A one-time import script copies TheMealDB's recipes into Scrappy's own Postgres database. After that, every user action is served by Scrappy's own API reading Scrappy's own database. TheMealDB is contacted only when the import script runs. This means there are no rate limits and no per-search cost, and the matching logic is Scrappy's own and testable. (Spoonacular was rejected: its terms forbid storing its data and cap caching at one hour.)
+**Recipe data is imported once; the browsing path never calls a third-party API.** A one-time import script copies TheMealDB's recipes into Scrappy's own Postgres database. After that, pantry editing, matching and recipe detail are served entirely by Scrappy's own API reading Scrappy's own database. TheMealDB is contacted only when the import script runs. This means there are no rate limits and no per-search cost, and the matching logic is Scrappy's own and testable. (Spoonacular was rejected: its terms forbid storing its data and cap caching at one hour.) The one runtime exception is the Anthropic API, called from the backend for F7 and F8 only, on an explicit user action, never on page load and never from the browser.
 
-**Matching is a SQL query, not AI.** Ranking recipes by ingredient overlap is deterministic set math: fast, free, explainable, and reproducible. An LLM would be slower, costlier, and non-deterministic. AI is reserved for fuzzy judgment calls, such as substitutions (post-MVP).
+**Matching is a SQL query, not AI: counting for facts, models for judgment.** Ranking recipes by ingredient overlap is deterministic set math: fast, free, explainable, and reproducible. An LLM would be slower, costlier, and non-deterministic, and the have/need counts the UI depends on would no longer come from one query. AI is reserved for the genuinely fuzzy calls, where there is no single right answer: what to substitute for a missing ingredient (F7), and what to cook when nothing matches (F8).
 
 **Matching reads the saved pantry.** `GET /matches` loads the caller's pantry on the server; the client sends no ingredient list. The matching logic itself is a pure function (`find_matches(session, ingredient_ids, limit)`), testable without HTTP or auth.
 
-**When nothing matches, the result is an empty list.** The API returns `200 []`, and the UI shows an empty state. There is no fallback call to anything else. (Post-MVP, AI recipe generation adds an explicit, user-triggered fallback.)
+**When nothing matches, the result is an empty list.** The API returns `200 []`, and the UI shows an empty state. Matching itself never falls back to anything else. The empty state offers a button that generates a recipe (F8), but only when the user presses it: no request ever spends money without a deliberate action.
 
 **Login is required everywhere.** There's no anonymous browsing and no demo or shared account. Every page requires a signed-in user, which removes a second code path entirely: no anonymous pantries, no browser-stored state, no merge-on-signup logic.
 
 **Only catalog ingredients enter a pantry.** Matching works only on canonical ingredients, so an unknown item like "leftover curry" could never match anything. Accepting it would quietly mislead the user. The autocomplete shows "No match" instead, and free text that doesn't resolve to a known ingredient can't be added. A misspelling is not simply rejected: when nothing matches, the autocomplete offers the closest catalog ingredients as "Did you mean…?", which the user must confirm. Correcting a typo therefore takes one click, but nothing outside the catalog is ever stored.
 
 **Ingredient names are parsed; quantities are not stored.** If a user types "1 egg" or "a cup of rice," the input is matched against the ingredient catalog by name, and any leading quantity or unit words are discarded during matching — they are never saved or used in any calculation. The pantry only ever records which ingredients a user has, never how much. This is a deliberate simplification: quantity-aware matching would require unit conversion (cups to grams to ounces, per ingredient) to compare what a user has against what a recipe needs, which is substantial complexity for a portfolio project. The trade-off is that a user who has 1 egg and a recipe that needs 6 still shows as "having" egg. The recipe detail page always shows exact measurements, so a user finds out real quantities before cooking; the pantry's job is only to narrow down candidates, not to guarantee sufficiency.
+
+**AI spend is capped in code, not just watched.** The Anthropic API is priced per token, which breaks the flat $0/month rule, so the budget is enforced rather than hoped for: a usage ledger records the real token counts and cost of every call, both AI endpoints return 503 once the month reaches $5, each user gets 10 substitution requests and 3 generations a day, substitution results are cached so a repeat question is free, `AI_ENABLED=false` turns both features off without a deploy, and the API key carries a $5 monthly limit set in the Anthropic Console as an independent backstop. The cap is a hard ceiling, and the expected bill at demo traffic is well under a dollar.
+
+**Claude Opus 5, called only from the backend.** Substitutions are judgment calls a reviewer will poke at, so quality matters more than the fraction of a cent saved by a smaller model. Requests use structured outputs, so responses parse into typed models instead of being scraped from prose, and `effort: "low"`, since both tasks are short and bounded. The API key lives in SSM Parameter Store and is read by Lambda; it never reaches the browser, and no `VITE_` variable is ever involved.
+
+**Generated recipes belong to one user.** A recipe created by F8 is stored with `source='generated'` and the id of the user who asked for it. Matching excludes generated recipes that belong to anyone else, so one user's AI experiment never appears in another user's results, while the imported TheMealDB catalog stays shared by everyone.
+
+**Everything AI-generated says so.** Substitutions and generated recipes are labeled in the UI, because a suggestion from a model is a different kind of claim from a recipe a person wrote and an ingredient count computed in SQL.
 
 **Staples are not assumed.** Every ingredient in a recipe counts toward its total, including salt, oil, and water. Match percentages are therefore honest but often lower for simple recipes. The pantry editor shows a hint: "Tip: add basics like salt, oil, and water for more accurate matches."
 
@@ -120,7 +132,7 @@ These are deliberate. Don't change them without updating this section.
 
 **Missing data isn't invented.** TheMealDB has no cooking times or servings, so the app doesn't show them rather than guess.
 
-**Hosting costs $0/month.** No resource with a fixed monthly charge is ever created (see section 14).
+**Hosting has no fixed monthly cost.** No resource with a fixed monthly charge is ever created. The only usage-priced service is the Anthropic API, capped at $5/month (see section 14).
 
 ---
 
@@ -180,6 +192,24 @@ These are deliberate. Don't change them without updating this section.
 - Links to the recipe's video and original source appear when available.
 - Going back returns to the results without reloading them.
 
+### AI assistance
+
+**US-18** — As a user missing a few ingredients, I want substitution suggestions, so that I can cook the recipe anyway.
+- The recipe page has a "Suggest substitutions" button, shown only when something is missing.
+- Each missing ingredient gets at most one suggestion, with a one-line reason.
+- Suggestions prefer ingredients already in the user's pantry, and say which ones those are.
+- Every suggestion is labeled AI-generated.
+- Asking again for the same recipe and the same pantry returns the cached answer without a new API call.
+- When the daily limit is reached the UI says so; when the monthly cap is reached it says the feature is paused until next month.
+
+**US-19** — As a user whose pantry matches nothing, I want a recipe generated from what I have, so that the app is useful in the worst case.
+- The "no overlap" empty state offers "Generate a recipe from my ingredients."
+- Generation only ever runs when the user presses that button.
+- The generated recipe uses only pantry ingredients, and has a title, ingredients with measurements, and numbered steps.
+- It is saved to the user's account, labeled AI-generated everywhere it appears, and visible only to them.
+- It appears in that user's later matches like any other recipe.
+- The same daily and monthly limits apply, with the same messages.
+
 **Definition of done for every story:**
 - Acceptance criteria are met.
 - Tests are added and passing.
@@ -196,7 +226,9 @@ Desktop-only. No mobile breakpoints, no touch-specific interactions, no phone la
 |---|---|---|
 | Login | Shown whenever signed out | App name and a one-line pitch; Amplify's sign-in, create-account, and forgot-password forms |
 | Home | `/` | Header (app name, sign out); pantry editor with the basics hint; ranked results |
-| Recipe detail | `/recipes/:id` | Back link; photo; title; category and cuisine tags; ingredients with owned/missing marks; numbered steps; video and source links |
+| Recipe detail | `/recipes/:id` | Back link; photo; title; category and cuisine tags; ingredients with owned/missing marks; numbered steps; video and source links; "Suggest substitutions" for missing ingredients (F7), with results shown in a labeled panel |
+
+Generated recipes (F8) use the same detail route and layout, with an "AI-generated" badge in place of the category tags and no video or source link. The "no overlap" empty state on Home carries the button that creates one.
 
 **Layout.** Home uses two fixed columns: the pantry on the left, results on the right. No responsive stacking or breakpoint logic is implemented.
 
@@ -228,6 +260,7 @@ Desktop-only. No mobile breakpoints, no touch-specific interactions, no phone la
 | Settings | pydantic-settings | Typed configuration from environment variables |
 | Token verification | PyJWT (`PyJWKClient`) | Verifies Cognito access tokens inside FastAPI |
 | Normalization | `inflect` + a synonym list | Singular/plural handling for ingredient names |
+| AI features | `anthropic` SDK, model `claude-opus-5` | Substitutions (F7) and recipe generation (F8), backend only, with structured outputs |
 | Lambda adapter | Mangum | Runs the FastAPI app on Lambda |
 | Backend tooling | uv, ruff, pytest | Dependencies and lockfile, lint and format, tests |
 | Compute | AWS Lambda (Python 3.13, x86_64) with a Function URL | Permanent free tier |
@@ -410,7 +443,7 @@ Note: only `ingredient_id` is ever sent or stored for a pantry item. There is no
 
 **Backend**
 
-- `routers/matches.py` loads the current user's pantry ingredient IDs. If the pantry is empty, it returns `[]` without querying. Otherwise it calls `matching.find_matches(session, ingredient_ids, limit)`.
+- `routers/matches.py` loads the current user's pantry ingredient IDs. If the pantry is empty, it returns `[]` without querying. Otherwise it calls `matching.find_matches(session, ingredient_ids, user_id, limit)`.
 - `find_matches` executes this query (verified against Postgres with fixture data):
 
 ```sql
@@ -423,6 +456,8 @@ WITH scored AS (
   FROM recipes r
   JOIN recipe_ingredients ri ON ri.recipe_id = r.id
   JOIN ingredients i         ON i.id = ri.ingredient_id
+  -- The imported catalog is shared; a generated recipe is visible only to its owner (F8).
+  WHERE r.source <> 'generated' OR r.created_by = :user_id
   GROUP BY r.id, r.title, r.image_url
 )
 SELECT id, title, image_url AS thumbnail_url, have, total,
@@ -435,6 +470,7 @@ LIMIT :limit;
 ```
 
 - `have`, `total`, and `missing` come from one query, so `total − have = len(missing)` always holds.
+- `user_id` only scopes generated recipes. No fixture recipe is generated, so the worked example below is unaffected.
 - Confirmed example: a fixture catalog with "Egg fried rice" (rice, egg, garlic, oil, salt, soy sauce, spring onion) and "Boiled egg" (egg, water, salt), with a pantry of egg, rice, and garlic, returns exactly:
   1. Egg fried rice: 3/7, 43%, missing oil, salt, soy sauce, spring onion.
   2. Boiled egg: 1/3, 33%, missing water, salt.
@@ -463,7 +499,9 @@ LIMIT :limit;
 
 **Backend.** `routers/recipes.py`. The `owned` flag is computed against the user's pantry. Ingredients are ordered by `recipe_ingredients.position`.
 
-**Tests.** A missing ID returns 404; `owned` flags match the pantry; steps and ingredients come back in order.
+When at least one ingredient is missing, the page also shows the "Suggest substitutions" button described in 10.11. A generated recipe (F8) renders through the same page and component, with an "AI-generated" badge.
+
+**Tests.** A missing ID returns 404; `owned` flags match the pantry; steps and ingredients come back in order; a generated recipe belonging to another user returns 404.
 
 ### 10.4 F5 + F6 — Accounts, login wall, saved pantry
 
@@ -595,7 +633,7 @@ Re-running the script must change nothing.
   - handler `app.main.handler`
   - 512 MB memory, 10-second timeout
   - code from the zip that CI builds, with `source_code_hash`
-  - environment variables: `ENV`, `APP_VERSION`, `AUTH_MODE`, `DATABASE_URL_PARAM`, `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID`
+  - environment variables: `ENV`, `APP_VERSION`, `AUTH_MODE`, `DATABASE_URL_PARAM`, `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID`, and, from M6, `ANTHROPIC_API_KEY_PARAM`, `AI_ENABLED`, `AI_MODEL`, `AI_MONTHLY_BUDGET_CENTS`, `AI_DAILY_SUBSTITUTIONS_PER_USER`, `AI_DAILY_GENERATIONS_PER_USER`
 - **Function URL:**
   - auth type `NONE`, because the app verifies Cognito tokens itself
   - CORS origins: the CloudFront domain and `http://localhost:5173`
@@ -603,10 +641,11 @@ Re-running the script must change nothing.
 - **Function resource policy:** it must grant both `lambda:InvokeFunctionUrl` and `lambda:InvokeFunction` to `*`, conditioned on `lambda:FunctionUrlAuthType = NONE` and `lambda:InvokedViaFunctionUrl = true`. Function URLs created since October 2025 require both actions; missing the second causes 403 Forbidden.
 - **CORS lives in one place.** In production the Function URL handles CORS. FastAPI's `CORSMiddleware` is enabled only when `ENV=local`, because enabling both produces duplicate headers that browsers reject.
 - **CloudWatch log group:** `/aws/lambda/scrappy-api` with 14-day retention. Create it in Terraform before the first invocation; otherwise Lambda creates one that keeps logs forever.
-- **SSM parameter:** `/scrappy/prod/database_url`, a SecureString.
-  - Terraform creates it with a placeholder and `lifecycle { ignore_changes = [value] }`.
-  - The real value is set once with `aws ssm put-parameter --overwrite`, so it never enters Terraform state or git.
-- **Lambda role:** `AWSLambdaBasicExecutionRole` plus `ssm:GetParameter` on that one parameter only.
+- **SSM parameters:** `/scrappy/prod/database_url` and, from M6, `/scrappy/prod/anthropic_api_key`, both SecureStrings.
+  - Terraform creates each with a placeholder and `lifecycle { ignore_changes = [value] }`.
+  - The real values are set once with `aws ssm put-parameter --overwrite`, so they never enter Terraform state or git.
+  - Both are read once per Lambda cold start, never per request.
+- **Lambda role:** `AWSLambdaBasicExecutionRole` plus `ssm:GetParameter` on those parameters only.
 
 **GitHub access (`github.tf`)**
 - An OIDC provider for `token.actions.githubusercontent.com` with audience `sts.amazonaws.com`.
@@ -686,9 +725,79 @@ In order:
 6. Key decisions from section 4
 7. Tech stack
 8. Testing and CI, with a status badge
-9. How it stays at $0/month
+9. How it runs at no fixed cost, and how AI spend is capped
 10. Local setup
 11. Post-MVP roadmap
+
+### 10.11 F7 — AI substitutions
+
+**Behavior.** On a recipe with missing ingredients, a "Suggest substitutions" button. Pressing it
+shows a labeled panel: one suggestion per missing ingredient, each with a one-line reason, with
+suggestions already in the pantry marked. Nothing is requested until the button is pressed.
+
+**Backend (`app/ai.py` and `routers/ai.py`)**
+
+- `POST /recipes/{id}/substitutions` loads the recipe, computes the missing ingredients against
+  the caller's pantry, and returns `{"suggestions": [{missing_ingredient, suggestion, reason, in_pantry}]}`.
+- A recipe with nothing missing returns `{"suggestions": []}` without calling Anthropic.
+- **Cache first.** The key is `(recipe_id, pantry_hash)`, where `pantry_hash` is a SHA-256 of the
+  caller's sorted pantry ingredient ids. A hit returns the stored payload and costs nothing.
+- **Guardrails, checked in this order, before any spend:** `AI_ENABLED` (503), the monthly cap
+  (503), the caller's daily count (429).
+- The call itself: `claude-opus-5`, structured outputs against the response model,
+  `output_config: {"effort": "low"}`, no streaming, `max_tokens` 1024.
+- The prompt states the recipe title, the missing ingredients, and the pantry, and asks for one
+  substitution per missing ingredient, preferring pantry items, with a reason of at most 15 words,
+  and permission to return nothing for an ingredient with no sensible substitute.
+- Afterwards it records `usage.input_tokens` and `usage.output_tokens` and the cost they imply in
+  `ai_monthly_usage`, increments `ai_user_daily_usage`, and writes the cache row.
+
+**Frontend**
+
+- `SubstitutionsPanel` under the ingredient list, driven by `useSubstitutions(recipeId)`.
+- The button is hidden when nothing is missing, and disabled while the request is in flight.
+- The panel is headed "AI-generated suggestions" and reads as clearly distinct from recipe content.
+- 429 shows "You've used today's suggestions — try again tomorrow." 503 shows "AI features are
+  paused until next month." Other errors show inline with "Try again."
+
+**Tests.** The Anthropic client is stubbed, so tests never call the API or spend money:
+a first request calls the model and a second identical one is served from the cache; a recipe with
+nothing missing never calls the model; the daily limit returns 429; the monthly cap returns 503;
+`AI_ENABLED=false` returns 503; the usage ledger records the token counts from the response;
+a malformed model response returns 502 rather than a broken payload.
+
+### 10.12 F8 — AI recipe generation
+
+**Behavior.** The "no overlap" empty state offers "Generate a recipe from my ingredients." Pressing
+it creates a recipe from the pantry, saves it to the user's account, and opens it on the normal
+recipe page with an "AI-generated" badge.
+
+**Backend**
+
+- `POST /recipes/generate` takes no body and uses the caller's saved pantry. An empty pantry
+  returns 422.
+- Guardrails and the usage ledger work exactly as in 10.11, with the generation daily limit.
+- The call: `claude-opus-5`, structured outputs (title, ingredients with measurements, steps),
+  `output_config: {"effort": "low"}`, `max_tokens` 2048.
+- The prompt gives the pantry and asks for a recipe that uses only those ingredients, with a short
+  title, measurements, and numbered steps.
+- Every returned ingredient name is normalized through `app/normalize.py` and mapped to the
+  catalog. A name that maps to nothing is created as an ingredient, exactly as the import does.
+- The recipe is saved with `source='generated'`, `created_by` set to the caller, `category`,
+  `area`, `image_url`, `youtube_url` and `source_url` null, and returned in the `/recipes/{id}` shape
+  plus `"generated": true`.
+
+**Frontend**
+
+- The empty state's button calls `useGenerateRecipe()`, then navigates to the new recipe's page.
+- A visible loading state, since generation takes a few seconds.
+- The badge appears on the detail page and on the recipe's card in later match results.
+
+**Tests.** With the Anthropic client stubbed: a generated recipe is saved with `source='generated'`
+and the right owner; its ingredients are normalized and mapped to existing catalog rows where they
+exist; an empty pantry returns 422 without calling the model; a generated recipe appears in its
+owner's matches and never in another user's; another user requesting it by id gets 404; the daily
+limit, the monthly cap and the kill switch behave as in 10.11.
 
 ---
 
@@ -705,6 +814,12 @@ All endpoints except `/health` require `Authorization: Bearer <Cognito access to
 | DELETE | `/pantry/items/{ingredient_id}` | — | 204 | 401 |
 | GET | `/matches` | `?limit=1–50` (default 20) | 200 `[{id, title, thumbnail_url, have, total, match, missing}]` | 401, 422 |
 | GET | `/recipes/{id}` | — | 200 recipe detail (see 10.3) | 401, 404 |
+| POST | `/recipes/{id}/substitutions` | — | 200 `{suggestions: [{missing_ingredient, suggestion, reason, in_pantry}]}` | 401, 404, 429, 502, 503 |
+| POST | `/recipes/generate` | — | 200 recipe detail plus `generated: true` | 401, 422, 429, 502, 503 |
+
+The two AI endpoints are POST because each one spends money and writes rows. `429` means the
+caller's daily limit is used up; `503` means AI is disabled or the monthly cap is reached; `502`
+means the model returned something that didn't match the expected schema.
 
 `/docs` and `/openapi.json` stay enabled in production.
 
@@ -728,6 +843,7 @@ Tables are defined as SQLAlchemy ORM models in `models.py`, and Alembic migratio
 | | `image_url`, `youtube_url`, `source_url` | text | Optional |
 | | `steps` | jsonb, not null | Array of strings |
 | | `total_minutes`, `servings` | integer, nullable | Always empty in the MVP |
+| | `created_by` | text FK → users, nullable | Null for imported recipes; the owner for generated ones (F8) |
 | | `created_at` | timestamptz, default now() | |
 | `recipe_ingredients` | `recipe_id` | int FK → recipes, cascade delete | PK with `ingredient_id` |
 | | `ingredient_id` | int FK → ingredients | |
@@ -738,6 +854,18 @@ Tables are defined as SQLAlchemy ORM models in `models.py`, and Alembic migratio
 | `pantry_items` | `user_id` | text FK → users, cascade delete | PK with `ingredient_id` |
 | | `ingredient_id` | int FK → ingredients | |
 | | `added_at` | timestamptz, default now() | |
+| `ai_monthly_usage` | `month` | text PK | `YYYY-MM` |
+| | `calls` | integer, not null, default 0 | |
+| | `input_tokens`, `output_tokens` | bigint, not null, default 0 | Taken from each response's `usage` |
+| | `cost_cents` | integer, not null, default 0 | Compared against `AI_MONTHLY_BUDGET_CENTS` |
+| `ai_user_daily_usage` | `user_id` | text FK → users, cascade delete | PK with `day` and `feature` |
+| | `day` | date | |
+| | `feature` | text | `substitutions` or `generation` |
+| | `calls` | integer, not null, default 0 | |
+| `substitution_cache` | `recipe_id` | int FK → recipes, cascade delete | PK with `pantry_hash` |
+| | `pantry_hash` | text | SHA-256 of the caller's sorted pantry ingredient ids |
+| | `payload` | jsonb, not null | The stored suggestions |
+| | `created_at` | timestamptz, default now() | |
 
 Note: `pantry_items` has no quantity column, by design (see section 4).
 
@@ -757,7 +885,18 @@ Note: `pantry_items` has no quantity column, by design (see section 4).
 | `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID` | From Terraform outputs | — | Set by Terraform |
 | `APP_VERSION` | `local` | — | Commit SHA |
 
-**Frontend** (compiled into public JavaScript; never put secrets here): `VITE_API_URL`, `VITE_COGNITO_USER_POOL_ID`, `VITE_COGNITO_CLIENT_ID`.
+**AI settings** (backend only; the key is never exposed to the browser)
+
+| Variable | Local | CI tests | Production (Lambda) |
+|---|---|---|---|
+| `ANTHROPIC_API_KEY` | From `.env` | Not set; the client is stubbed | `ANTHROPIC_API_KEY_PARAM` = `/scrappy/prod/anthropic_api_key`, read from SSM once per cold start |
+| `AI_ENABLED` | `true` | `false` unless a test overrides it | `true`; set to `false` to disable both features without a deploy |
+| `AI_MODEL` | `claude-opus-5` | — | `claude-opus-5` |
+| `AI_MONTHLY_BUDGET_CENTS` | `500` | — | `500` |
+| `AI_DAILY_SUBSTITUTIONS_PER_USER` | `10` | — | `10` |
+| `AI_DAILY_GENERATIONS_PER_USER` | `3` | — | `3` |
+
+**Frontend** (compiled into public JavaScript; never put secrets here): `VITE_API_URL`, `VITE_COGNITO_USER_POOL_ID`, `VITE_COGNITO_CLIENT_ID`. No AI configuration appears here at all.
 
 **Where secrets live**
 - **Neon pooled URL:** SSM, for Lambda.
@@ -769,7 +908,8 @@ Note: `pantry_items` has no quantity column, by design (see section 4).
 
 ## 14. Cost rules
 
-**Rule:** never create a resource that charges a fixed amount just for existing.
+**Rule:** never create a resource that charges a fixed amount just for existing. One usage-priced
+service is allowed — the Anthropic API, for F7 and F8 — and it is capped at **$5/month**.
 
 **Prohibited:** RDS, NAT Gateway, load balancers, EC2 instances, public IPv4 addresses, Route 53 hosted zones, Secrets Manager.
 
@@ -784,7 +924,26 @@ S3 storage for the frontend costs fractions of a cent. CloudWatch log retention 
 
 **No VPC.** Lambda runs outside a VPC and reaches Neon over TLS, so no NAT Gateway is needed.
 
-**Account guardrails:** an AWS Budget alert at $1/month that excludes credits.
+**AI spend (the only variable cost)**
+
+At Claude Opus 5 pricing ($5 per million input tokens, $25 per million output), a substitution
+request costs about 0.8¢ and a generated recipe about 2.2¢. The $5 cap therefore covers roughly
+300 substitutions plus 100 generated recipes a month, far more than a portfolio demo will use.
+
+Six guardrails, three of which stop spending outright:
+
+1. **Usage ledger.** Every call records its real token counts and cost in `ai_monthly_usage`.
+2. **Monthly cap.** At `AI_MONTHLY_BUDGET_CENTS` (500), both endpoints return 503.
+3. **Per-user daily limits.** 10 substitution requests and 3 generations per user per day (429).
+4. **Cache.** Repeat substitution requests for the same recipe and pantry cost nothing.
+5. **Kill switch.** `AI_ENABLED=false` disables both features without a deploy.
+6. **Console limit.** A $5 monthly spend limit on the API key, set by hand in the Anthropic
+   Console, so a bug in our own accounting still can't produce a surprise bill.
+
+Every call is triggered by an explicit button press. Nothing spends money on page load.
+
+**Account guardrails:** an AWS Budget alert at $1/month that excludes credits, and the Anthropic
+Console spend limit above.
 
 ---
 
@@ -797,11 +956,19 @@ S3 storage for the frontend costs fractions of a cent. CloudWatch log retention 
 | M3 | Oct 11 | F2/F3 results UI; F4 detail page; E5; start E3 | The full app works locally; the first AWS resources are applied |
 | M4 | Oct 18 | Finish E3; Neon and production import; E4 pipeline | Live URL in shared mode; merging to `main` deploys |
 | M5 | Oct 25 | F5/F6: Cognito, login wall, token verification, per-user pantries | The live app requires login; pantries are per user |
-| M6 | Oct 28 | E6 README; fixes | The MVP definition of done (3.4) is met |
+| M6 | Nov 1 | F7 AI substitutions: SSM key, `app/ai.py`, usage ledger and limits, endpoint, panel UI | Substitutions work live, within the limits, with the ledger recording spend |
+| M7 | Nov 8 | F8 AI recipe generation: `created_by`, matching scoped to owners, endpoint, empty-state UI | A generated recipe is saved, labeled, and visible only to its owner |
+| M8 | Nov 11 | E6 README; fixes | The MVP definition of done (3.4) is met |
+
+The ship date moved from October 28 to **November 11** on September 26, 2026, when AI
+substitutions and recipe generation were promoted from the post-MVP backlog into the MVP. That is
+the honest cost of the extra scope: the remaining hours before October 28 were already committed
+to M2–M5, and deployment and login are never cut to make room.
 
 **If behind schedule**, cut in this order:
-1. Frontend component tests (keep backend tests)
-2. Visual polish
+1. AI recipe generation (F8), the larger and less essential of the two AI features
+2. Frontend component tests (keep backend tests)
+3. Visual polish
 
 Never cut deployment, login, backend tests, or the README.
 
@@ -817,11 +984,10 @@ Never cut deployment, login, backend tests, or the README.
 
 ## Appendix A — Post-MVP stories
 
-**AI substitutions.** As a user, I want substitution suggestions for an ingredient I'm missing, so that I can cook anyway. Suggestions prefer items in the user's pantry, each includes a one-line reason, and all are labeled AI-generated.
+AI substitutions and AI recipe generation used to live here. They are now MVP features F7 and F8;
+their stories are US-18 and US-19 in section 5.
 
 **Favorites.** As a user, I want to favorite recipes, so that I can find ones I liked again.
-
-**AI recipe generation.** As a user, I want to generate a recipe from my exact ingredients when nothing matches, so that the app is useful in the worst case. Generated recipes are visibly labeled and can be saved.
 
 **Cook history.** As a user, I want to mark a recipe as cooked, so that I have a history of what I've made.
 

@@ -29,7 +29,7 @@ flowchart LR
 
 - The **frontend** is a static React build served from a private S3 bucket through CloudFront.
 - The **API** is FastAPI running on AWS Lambda (via Mangum), reached through a Lambda Function URL. It verifies the Cognito access token on every request.
-- The **database** is Postgres on Neon's free plan. The recipe catalog is imported from TheMealDB once; the running app never calls a third-party API.
+- The **database** is Postgres on Neon's free plan. The recipe catalog is imported from TheMealDB once, so browsing never calls a third-party API. The one runtime exception is Claude, called from the backend for substitutions and recipe generation, on an explicit button press.
 - **Everything on AWS is defined in Terraform** and deployed by GitHub Actions on every merge to `main`.
 
 ## Tech stack
@@ -39,6 +39,7 @@ flowchart LR
 | Frontend | React 19, TypeScript (strict), Vite, React Router, TanStack Query 5, Tailwind CSS 4, Headless UI |
 | Auth UI | Amplify UI `Authenticator` + `aws-amplify` 6 |
 | API | Python 3.13, FastAPI, Pydantic 2, pydantic-settings, Mangum |
+| AI features | `anthropic` SDK, Claude Opus 5, backend only, with a hard $5/month spend cap |
 | Database | PostgreSQL 17, SQLAlchemy 2, psycopg 3, Alembic |
 | Auth | Amazon Cognito, PyJWT |
 | Hosting | AWS Lambda, S3, CloudFront, SSM Parameter Store, CloudWatch; Neon Postgres |
