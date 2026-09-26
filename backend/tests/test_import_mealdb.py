@@ -5,13 +5,15 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import Ingredient, Recipe, RecipeIngredient
+from app.models import Ingredient, PantryItem, Recipe, RecipeIngredient
 from scripts.import_mealdb import (
     ImportSummary,
     dedupe_lines,
+    fold_aliased_ingredients,
     import_recipes,
     parse_meal,
     split_steps,
+    store_autocomplete_aliases,
 )
 
 CATALOG_NAMES = ["Egg", "Rice", "Garlic", "Olive Oil", "Salt"]
@@ -155,3 +157,69 @@ def test_reimport_replaces_changed_ingredient_lines(session: Session) -> None:
     ).all()
     names = {session.get(Ingredient, row.ingredient_id).name for row in rows}
     assert names == {"rice", "egg", "salt"}
+
+
+def test_aliased_ingredients_are_folded_into_their_target(session: Session, test_user: str) -> None:
+    """An ingredient that later became an alias is merged away, and pantries follow it."""
+    old = Ingredient(name="extra virgin olive oil", display_name="Extra Virgin Olive Oil")
+    target = Ingredient(name="olive oil", display_name="Olive Oil")
+    session.add_all([old, target])
+    session.flush()
+    session.add(PantryItem(user_id=test_user, ingredient_id=old.id))
+    session.flush()
+    summary = ImportSummary()
+
+    fold_aliased_ingredients(session, {"extra virgin olive oil": "olive oil"}, summary)
+
+    assert summary.ingredients_folded == 1
+    assert (
+        session.scalar(select(Ingredient).where(Ingredient.name == "extra virgin olive oil"))
+        is None
+    )
+    # The user still has the ingredient, now pointing at the surviving row.
+    owned = session.scalars(
+        select(PantryItem.ingredient_id).where(PantryItem.user_id == test_user)
+    ).all()
+    assert list(owned) == [target.id]
+
+
+def test_folding_does_not_duplicate_a_pantry_item(session: Session, test_user: str) -> None:
+    """A user who already has the target keeps exactly one row, not two."""
+    old = Ingredient(name="chopped tomato", display_name="Chopped Tomatoes")
+    target = Ingredient(name="tomato", display_name="Tomato")
+    session.add_all([old, target])
+    session.flush()
+    session.add_all(
+        [
+            PantryItem(user_id=test_user, ingredient_id=old.id),
+            PantryItem(user_id=test_user, ingredient_id=target.id),
+        ]
+    )
+    session.flush()
+
+    fold_aliased_ingredients(session, {"chopped tomato": "tomato"}, ImportSummary())
+
+    owned = session.scalars(
+        select(PantryItem.ingredient_id).where(PantryItem.user_id == test_user)
+    ).all()
+    assert list(owned) == [target.id]
+
+
+def test_folding_ignores_aliases_that_are_not_in_the_catalog(session: Session) -> None:
+    summary = ImportSummary()
+
+    fold_aliased_ingredients(session, {"never seen": "also never seen"}, summary)
+
+    assert summary.ingredients_folded == 0
+
+
+def test_aliases_are_stored_for_autocomplete(session: Session) -> None:
+    """Typing the old name should still find the ingredient it now maps to."""
+    target = Ingredient(name="garlic", display_name="Garlic")
+    session.add(target)
+    session.flush()
+
+    store_autocomplete_aliases(session, {"garlic clove": "garlic", "minced garlic": "garlic"})
+
+    session.refresh(target)
+    assert target.aliases == ["garlic clove", "minced garlic"]

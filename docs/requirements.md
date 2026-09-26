@@ -579,12 +579,15 @@ When at least one ingredient is missing, the page also shows the "Suggest substi
    - Singularize the last word with `inflect`. An exceptions list protects words it would break: asparagus, couscous, hummus, molasses.
    - Apply `data/aliases.json` (for example, "garlic clove" → "garlic").
 4. **Map** each name to a canonical ingredient. If none matches, create the ingredient and log it to `import_report.csv`. The fix is to add an alias and re-run.
+   - **Fold aliases added since the last run.** An ingredient whose name has since become an alias key is merged into its target: pantry items pointing at it move across (without creating a duplicate for a user who already has the target), its recipe rows are dropped before being rewritten, and the row is deleted. Without this, the old row would linger in autocomplete and match nothing.
+   - **Aliases become autocomplete terms.** Each alias is stored in its target's `aliases` array, so typing "extra virgin olive oil" still finds Olive Oil.
+   - Aliases never chain: every target in `data/aliases.json` is itself canonical, which a test enforces.
 5. **Deduplicate within a recipe.** When two lines map to one ingredient, keep the first position and join the measures with " + ".
 6. **Write** everything in one transaction:
    - Upsert recipes by `(source, source_id)`.
    - Replace each recipe's ingredient rows.
    - Split `strInstructions` on line breaks into `steps`, dropping blank lines and "STEP n" prefixes.
-7. **Print a summary:** recipes, ingredients, and unmapped names.
+7. **Print a summary:** recipes, ingredients created, ingredients folded, and unmapped names.
 
 Re-running the script must change nothing.
 
@@ -593,6 +596,10 @@ Re-running the script must change nothing.
 - Parsing a fixture meal.
 - Importing the fixture and checking counts.
 - Importing twice produces no duplicates.
+- Folding moves a pantry item to the alias target, creates no duplicate when the user already has the target, and ignores aliases absent from the catalog.
+- Aliases are written to the target's `aliases` array.
+
+**Alias curation.** `data/aliases.json` maps preparation and quality modifiers onto the thing itself — "extra virgin olive oil" to olive oil, "chopped tomato" to tomato, "melted butter" to butter — and nothing else. Modifiers that change what the ingredient *is* stay separate: almond flour is not flour, coconut milk is not milk, black pepper is not pepper, cheddar is not cheese. Matching "chicken breast" to "chicken" is the ingredient-hierarchy problem, still post-MVP.
 
 ### 10.6 E2 — Testing standards
 
