@@ -1,0 +1,25 @@
+@import 'tailwindcss';
+
+/* Palette sampled directly from docs/current background.png and the recipe mockups:
+   cream page, deep green surfaces, olive card edge, black display type. */
+@theme {
+  --color-cream: #f8fae7;
+  --color-cream-deep: #f0ead3;
+  --color-forest: #4f756c;
+  --color-forest-dark: #3f5e57;
+  --color-forest-light: #e3ebe4;
+  --color-leaf: #377b50;
+  --color-olive: #636e38;
+  --color-ink: #000000;
+  --color-muted: #5d6357;
+
+  --font-display: 'Poppins', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Poppins', ui-sans-serif, system-ui, sans-serif;
+
+  --radius-card: 1.75rem;
+}
+
+body {
+  background-color: var(--color-cream);
+  color: var(--color-ink);
+}

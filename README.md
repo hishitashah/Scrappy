@@ -80,6 +80,22 @@ uv run pytest
 uv run ruff check . && uv run ruff format --check .
 ```
 
+Then the frontend, in a second terminal:
+
+```bash
+cd frontend
+npm install --legacy-peer-deps   # see the note below
+cp .env.example .env.local
+
+npm run dev        # http://localhost:5173
+npm test           # component and unit tests
+npm run lint && npm run typecheck && npm run build
+```
+
+The `--legacy-peer-deps` flag works around a peer-resolution crash in npm 10.9.2
+(`Cannot read properties of null (reading 'edgesOut')`). npm 12 fixes it, and `npm ci`,
+which CI uses, is unaffected.
+
 Stop the database with `docker compose down`; its data is kept in a Docker volume.
 
 ## License
