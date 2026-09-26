@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.auth import CurrentUser, DbSession
 from app.models import Ingredient, PantryItem, Recipe, RecipeIngredient
 from app.schemas import RecipeDetailResponse, RecipeIngredientResponse
+from app.staples import staple_ingredient_ids
 
 router = APIRouter(tags=["recipes"])
 
@@ -38,6 +39,9 @@ def get_recipe(recipe_id: int, session: DbSession, user_id: CurrentUser) -> Reci
     owned_ids = set(
         session.scalars(select(PantryItem.ingredient_id).where(PantryItem.user_id == user_id)).all()
     )
+    # Water is assumed, so it is marked owned even though it is not a pantry row.
+    owned_ids.update(staple_ingredient_ids(session))
+
     rows = session.execute(
         select(Ingredient.id, Ingredient.display_name, RecipeIngredient.measure)
         .join(RecipeIngredient, RecipeIngredient.ingredient_id == Ingredient.id)

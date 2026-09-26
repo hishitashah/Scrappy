@@ -123,3 +123,39 @@ def test_pantry_items_of_other_users_do_not_affect_results(
 
     boiled_egg = next(match for match in matches if match.title == "Boiled egg")
     assert boiled_egg.have == 1
+
+
+def test_find_matches_itself_assumes_nothing(
+    session: Session, catalog: dict[str, int], fixture_recipes: dict[str, int]
+) -> None:
+    """The matching query is pure: the endpoint adds assumed staples, not this function."""
+    matches = find_matches(session, pantry(catalog, "egg"), TEST_USER_ID)
+
+    boiled_egg = next(match for match in matches if match.title == "Boiled egg")
+    assert (boiled_egg.have, boiled_egg.total) == (1, 3)
+    assert boiled_egg.missing == ["Water", "Salt"]
+
+
+def test_assumed_staples_raise_the_score(
+    session: Session, catalog: dict[str, int], fixture_recipes: dict[str, int]
+) -> None:
+    """Water counts toward Boiled egg's score without being in the pantry."""
+    matches = find_matches(
+        session, pantry(catalog, "egg"), TEST_USER_ID, staple_ids=[catalog["water"]]
+    )
+
+    boiled_egg = next(match for match in matches if match.title == "Boiled egg")
+    assert (boiled_egg.have, boiled_egg.total, boiled_egg.match) == (2, 3, 67)
+    assert boiled_egg.missing == ["Salt"]
+
+
+def test_assumed_staples_never_qualify_a_recipe_alone(
+    session: Session, catalog: dict[str, int], fixture_recipes: dict[str, int]
+) -> None:
+    """A pantry of rice must not surface Boiled egg just because water is assumed."""
+    matches = find_matches(
+        session, pantry(catalog, "rice"), TEST_USER_ID, staple_ids=[catalog["water"]]
+    )
+
+    assert "Boiled egg" not in {match.title for match in matches}
+    assert "Egg fried rice" in {match.title for match in matches}

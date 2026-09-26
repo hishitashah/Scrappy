@@ -25,7 +25,7 @@ def test_list_ingredients_returns_the_catalog(client: TestClient, catalog: dict[
 
     assert response.status_code == 200
     body = response.json()
-    assert [item["display_name"] for item in body] == ["Egg", "Garlic", "Rice", "Salt"]
+    assert [item["display_name"] for item in body] == ["Egg", "Garlic", "Rice", "Salt", "Water"]
     egg = next(item for item in body if item["name"] == "egg")
     assert egg["aliases"] == ["eggs"]
     assert egg["id"] == catalog["egg"]

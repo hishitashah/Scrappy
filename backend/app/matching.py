@@ -18,6 +18,8 @@ MATCH_QUERY = text("""
 WITH scored AS (
   SELECT r.id, r.title, r.image_url,
          count(*) FILTER (WHERE ri.ingredient_id = ANY(:have))           AS have,
+         -- Ingredients the user actually put in their pantry, ignoring assumed staples.
+         count(*) FILTER (WHERE ri.ingredient_id = ANY(:pantry))         AS from_pantry,
          count(*)                                                        AS total,
          array_agg(i.display_name ORDER BY ri.position)
            FILTER (WHERE ri.ingredient_id <> ALL(:have))                 AS missing
@@ -32,7 +34,9 @@ SELECT id, title, image_url AS thumbnail_url, have, total,
        round(100.0 * have / total)::int AS match,
        coalesce(missing, '{}')          AS missing
 FROM scored
-WHERE have > 0
+-- An assumed staple raises a recipe's score but never qualifies it on its own: water
+-- appears in 150 recipes, and listing all of them for an unrelated pantry is noise.
+WHERE from_pantry > 0
 ORDER BY match DESC, have DESC, title ASC
 LIMIT :limit
 """)
@@ -56,8 +60,12 @@ def find_matches(
     ingredient_ids: Sequence[int],
     user_id: str,
     limit: int = 20,
+    staple_ids: Sequence[int] = (),
 ) -> list[Match]:
     """Rank recipes by how much of each the user can already make.
+
+    `ingredient_ids` is the real pantry; `staple_ids` are assumed staples (spec section 4),
+    which count toward a recipe's score but never qualify a recipe by themselves.
 
     A pure function of its arguments: no HTTP, no auth, no request state, so it can be
     tested directly. An empty pantry matches nothing, and never reaches the database.
@@ -65,9 +73,15 @@ def find_matches(
     if not ingredient_ids:
         return []
 
+    pantry = list(ingredient_ids)
     rows = session.execute(
         MATCH_QUERY,
-        {"have": list(ingredient_ids), "user_id": user_id, "limit": limit},
+        {
+            "have": sorted({*pantry, *staple_ids}),
+            "pantry": pantry,
+            "user_id": user_id,
+            "limit": limit,
+        },
     ).all()
     return [
         Match(

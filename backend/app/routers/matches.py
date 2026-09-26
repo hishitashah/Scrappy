@@ -9,6 +9,7 @@ from app.auth import CurrentUser, DbSession
 from app.matching import find_matches
 from app.models import PantryItem
 from app.schemas import MatchResponse
+from app.staples import staple_ingredient_ids
 
 router = APIRouter(tags=["matches"])
 
@@ -27,5 +28,8 @@ def get_matches(
     ingredient_ids = session.scalars(
         select(PantryItem.ingredient_id).where(PantryItem.user_id == user_id)
     ).all()
-    matches = find_matches(session, ingredient_ids, user_id, limit)
+    # Water is assumed: it raises scores, but never qualifies a recipe alone (spec section 4).
+    matches = find_matches(
+        session, ingredient_ids, user_id, limit, staple_ids=staple_ingredient_ids(session)
+    )
     return [MatchResponse.model_validate(match) for match in matches]
