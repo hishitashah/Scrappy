@@ -19,12 +19,12 @@ from pathlib import Path
 from typing import Any
 
 import httpx2 as httpx
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.db import get_engine
-from app.models import Ingredient, Recipe, RecipeIngredient
-from app.normalize import normalize
+from app.models import Ingredient, PantryItem, Recipe, RecipeIngredient
+from app.normalize import load_aliases, normalize
 
 BASE_URL = "https://www.themealdb.com/api/json/v1/1"
 SOURCE = "themealdb"
@@ -64,6 +64,7 @@ class ParsedRecipe:
 class ImportSummary:
     recipes: int = 0
     ingredients_created: int = 0
+    ingredients_folded: int = 0
     unmapped: list[tuple[str, str, str]] = field(default_factory=list)  # raw, canonical, recipe
 
 
@@ -189,6 +190,57 @@ def upsert_ingredients(
     return existing
 
 
+def fold_aliased_ingredients(
+    session: Session, aliases: dict[str, str], summary: ImportSummary
+) -> None:
+    """Merge ingredients that later became aliases into the ingredient they alias.
+
+    Adding "extra virgin olive oil" -> "olive oil" to data/aliases.json would otherwise
+    leave the old row behind: nothing would reference it, but it would still show up in
+    autocomplete and match nothing. Any pantry item pointing at it is moved to the target
+    first, so no user loses an ingredient they added.
+    """
+    for alias, target_name in aliases.items():
+        alias_row = session.scalar(select(Ingredient).where(Ingredient.name == alias))
+        target = session.scalar(select(Ingredient).where(Ingredient.name == target_name))
+        if alias_row is None or target is None:
+            continue
+
+        already_have = set(
+            session.scalars(
+                select(PantryItem.user_id).where(PantryItem.ingredient_id == target.id)
+            ).all()
+        )
+        for item in session.scalars(
+            select(PantryItem).where(PantryItem.ingredient_id == alias_row.id)
+        ).all():
+            if item.user_id not in already_have:
+                session.add(PantryItem(user_id=item.user_id, ingredient_id=target.id))
+            session.delete(item)
+
+        # The recipes that referenced it are rewritten below; drop the stale rows first.
+        session.execute(
+            delete(RecipeIngredient).where(RecipeIngredient.ingredient_id == alias_row.id)
+        )
+        session.delete(alias_row)
+        summary.ingredients_folded += 1
+    session.flush()
+
+
+def store_autocomplete_aliases(session: Session, aliases: dict[str, str]) -> None:
+    """Put each alias on its target ingredient, so typing the old name still finds it."""
+    by_target: dict[str, list[str]] = {}
+    for alias, target_name in aliases.items():
+        by_target.setdefault(target_name, []).append(alias)
+
+    for target_name, alias_names in by_target.items():
+        ingredient = session.scalar(select(Ingredient).where(Ingredient.name == target_name))
+        if ingredient is None:
+            continue
+        ingredient.aliases = sorted(set(ingredient.aliases) | set(alias_names))
+    session.flush()
+
+
 def import_recipes(
     session: Session,
     recipes: Iterable[ParsedRecipe],
@@ -197,6 +249,8 @@ def import_recipes(
 ) -> ImportSummary:
     """Write the catalog. Idempotent: re-running with the same input changes nothing."""
     summary = summary or ImportSummary()
+    aliases = load_aliases()
+    fold_aliased_ingredients(session, aliases, summary)
 
     catalog = [(normalize(name), name) for name in catalog_names]
     catalog = [(canonical, display) for canonical, display in catalog if canonical]
@@ -243,6 +297,7 @@ def import_recipes(
             )
         summary.recipes += 1
 
+    store_autocomplete_aliases(session, aliases)
     return summary
 
 
@@ -268,6 +323,7 @@ def main() -> int:
     write_report(summary)
     print(f"Recipes imported:      {summary.recipes}")
     print(f"Ingredients created:   {summary.ingredients_created}")
+    print(f"Ingredients folded:    {summary.ingredients_folded} (merged into an alias target)")
     print(f"Unmapped names:        {len(summary.unmapped)} (see {REPORT_PATH.name})")
     return 0
 
