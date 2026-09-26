@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL",
-    "postgresql+psycopg://scrappy:scrappy@localhost:5432/scrappy_test",
+    "postgresql+psycopg://scrappy:scrappy@localhost:5433/scrappy_test",
 )
 
 

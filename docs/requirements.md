@@ -108,7 +108,7 @@ These are deliberate. Don't change them without updating this section.
 
 **Login is required everywhere.** There's no anonymous browsing and no demo or shared account. Every page requires a signed-in user, which removes a second code path entirely: no anonymous pantries, no browser-stored state, no merge-on-signup logic.
 
-**Only catalog ingredients enter a pantry.** Matching works only on canonical ingredients, so an unknown item like "leftover curry" could never match anything. Accepting it would quietly mislead the user. The autocomplete shows "No match" instead, and free text that doesn't resolve to a known ingredient can't be added.
+**Only catalog ingredients enter a pantry.** Matching works only on canonical ingredients, so an unknown item like "leftover curry" could never match anything. Accepting it would quietly mislead the user. The autocomplete shows "No match" instead, and free text that doesn't resolve to a known ingredient can't be added. A misspelling is not simply rejected: when nothing matches, the autocomplete offers the closest catalog ingredients as "Did you mean…?", which the user must confirm. Correcting a typo therefore takes one click, but nothing outside the catalog is ever stored.
 
 **Ingredient names are parsed; quantities are not stored.** If a user types "1 egg" or "a cup of rice," the input is matched against the ingredient catalog by name, and any leading quantity or unit words are discarded during matching — they are never saved or used in any calculation. The pantry only ever records which ingredients a user has, never how much. This is a deliberate simplification: quantity-aware matching would require unit conversion (cups to grams to ounces, per ingredient) to compare what a user has against what a recipe needs, which is substantial complexity for a portfolio project. The trade-off is that a user who has 1 egg and a recipe that needs 6 still shows as "having" egg. The recipe detail page always shows exact measurements, so a user finds out real quantities before cooking; the pantry's job is only to narrow down candidates, not to guarantee sufficiency.
 
@@ -149,7 +149,9 @@ These are deliberate. Don't change them without updating this section.
 - "Eggs," "eggs," and "egg" all suggest "Egg."
 - Leading quantity or unit words ("1", "a cup of") are ignored when matching what's typed against the catalog; nothing about quantity is stored.
 - Ingredients already in the pantry aren't suggested, so duplicates are impossible.
-- Text matching no known ingredient shows "No match — try a simpler name" and can't be added.
+- Text matching no known ingredient, but close to one, shows "Did you mean …?" with up to three
+  suggestions. Choosing one adds that ingredient; Enter alone adds nothing.
+- Text close to nothing in the catalog shows "No match — try a simpler name" and can't be added.
 
 **US-4** — As a user, I want to remove an ingredient in one tap, so that my pantry stays accurate as I use things up.
 - The item disappears immediately, without waiting for the server.
@@ -345,6 +347,12 @@ scrappy/
 - `IngredientCombobox` uses Headless UI `Combobox`.
 - `useIngredients()` loads `GET /ingredients` once per session (`staleTime: Infinity`).
 - Filtering runs in the browser: strip any leading quantity/unit words from the query (a small stopword list: numbers, "a", "an", "cup", "cups", "tbsp", "tsp", "oz", "of", etc.), lowercase the remainder, match it against each ingredient's `name` and `aliases`, rank prefix matches first, exclude ingredients already in the pantry, and show the top 8.
+- When that yields nothing, fall back to a "Did you mean…?" list: rank the catalog by Levenshtein
+  distance to the query and keep up to three within a distance of 1 for queries shorter than 5
+  characters, or 2 otherwise. The list is visually distinct from ordinary suggestions and is never
+  auto-selected: pressing Enter with no selection adds nothing. Below that distance nothing is
+  offered and the "No match" message stands. The comparison is pure client-side string distance,
+  with no API call and no new dependency.
 - `usePantry()` loads `GET /pantry`.
 - `useAddPantryItems()` calls `POST /pantry/items`, then invalidates the `pantry` and `matches` queries.
 - `useRemovePantryItem()` calls `DELETE /pantry/items/{id}` with an optimistic update:
@@ -379,6 +387,8 @@ Note: only `ingredient_id` is ever sent or stored for a pantry item. There is no
 - Frontend:
   - Typing "egg" suggests "Egg."
   - Typing "1 egg" or "a cup of rice" still suggests "Egg" / "Rice."
+  - Typing "garlick" offers "Did you mean Garlic?"; choosing it adds Garlic, and Enter alone does not.
+  - Typing "zzzzz" shows "No match — try a simpler name" with no suggestions.
   - Owned items aren't suggested.
   - × removes the chip before the server responds.
   - A failed delete restores the chip.
@@ -520,7 +530,9 @@ LIMIT :limit;
 
 1. **Fetch.** Use httpx2 (the maintained successor to httpx, which Starlette's test client also prefers) against `https://www.themealdb.com/api/json/v1/1/`, the free test key, which is allowed for development and educational use.
    - `list.php?i=list` returns the canonical ingredient list.
-   - `search.php?f=a` through `f=z` (26 calls) return every meal with full details.
+   - `search.php?f=a` through `f=z`, then `f=0` through `f=9` (36 calls), return every meal
+     with full details. Digits are included because TheMealDB holds at least one meal whose
+     title starts with a number, which an a–z sweep would silently miss.
    - Responses are cached to a git-ignored file.
 2. **Parse.** Pair `strIngredient1–20` with `strMeasure1–20`, skipping empty slots.
 3. **Normalize** (`app/normalize.py`):
