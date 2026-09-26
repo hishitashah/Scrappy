@@ -57,7 +57,7 @@ flowchart LR
 **Prerequisites:** macOS or Linux, [Docker Desktop](https://www.docker.com/products/docker-desktop/), and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-# 1. Start local Postgres 17 (creates the scrappy and scrappy_test databases)
+# 1. Start local Postgres 17 on host port 5433 (creates scrappy and scrappy_test)
 docker compose up -d
 
 # 2. Install backend dependencies and create a local config file

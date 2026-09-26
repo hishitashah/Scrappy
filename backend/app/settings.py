@@ -16,9 +16,9 @@ class Settings(BaseSettings):
     env: Literal["local", "test", "prod"] = "local"
     app_version: str = "local"
 
-    # SQLAlchemy URL, e.g. postgresql+psycopg://scrappy:scrappy@localhost:5432/scrappy
+    # SQLAlchemy URL, e.g. postgresql+psycopg://scrappy:scrappy@localhost:5433/scrappy
     # In production the value comes from SSM instead; see spec 10.7.
-    database_url: str = "postgresql+psycopg://scrappy:scrappy@localhost:5432/scrappy"
+    database_url: str = "postgresql+psycopg://scrappy:scrappy@localhost:5433/scrappy"
 
 
 @lru_cache
