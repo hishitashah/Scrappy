@@ -14,8 +14,20 @@ def pantry(catalog: dict[str, int], *names: str) -> list[int]:
 def test_worked_example_from_the_spec(
     session: Session, catalog: dict[str, int], fixture_recipes: dict[str, int]
 ) -> None:
-    """Egg + rice + garlic returns exactly these two rows, in this order."""
-    matches = find_matches(session, pantry(catalog, "egg", "rice", "garlic"), TEST_USER_ID)
+    """Egg + water + rice + garlic: Boiled egg qualifies at 67%, Egg fried rice does not."""
+    matches = find_matches(session, pantry(catalog, "egg", "water", "rice", "garlic"), TEST_USER_ID)
+
+    assert [(m.title, m.have, m.total, m.match) for m in matches] == [("Boiled egg", 2, 3, 67)]
+    assert matches[0].missing == ["Salt"]
+
+
+def test_ranking_without_the_floor(
+    session: Session, catalog: dict[str, int], fixture_recipes: dict[str, int]
+) -> None:
+    """min_match=0 shows the raw ranking: percentage, then have, then title."""
+    matches = find_matches(
+        session, pantry(catalog, "egg", "rice", "garlic"), TEST_USER_ID, min_match=0
+    )
 
     assert [(m.title, m.have, m.total, m.match) for m in matches] == [
         ("Egg fried rice", 3, 7, 43),
@@ -25,10 +37,22 @@ def test_worked_example_from_the_spec(
     assert matches[1].missing == ["Water", "Salt"]
 
 
+def test_recipes_below_the_floor_are_hidden(
+    session: Session, catalog: dict[str, int], fixture_recipes: dict[str, int]
+) -> None:
+    """Under half the ingredients is a shopping list, not a suggestion (spec 10.2)."""
+    have = pantry(catalog, "egg", "rice", "garlic")
+
+    assert find_matches(session, have, TEST_USER_ID) == []
+    assert len(find_matches(session, have, TEST_USER_ID, min_match=0)) == 2
+
+
 def test_recipes_with_no_overlap_are_excluded(
     session: Session, catalog: dict[str, int], fixture_recipes: dict[str, int]
 ) -> None:
-    matches = find_matches(session, pantry(catalog, "egg", "rice", "garlic"), TEST_USER_ID)
+    matches = find_matches(
+        session, pantry(catalog, "egg", "rice", "garlic"), TEST_USER_ID, min_match=0
+    )
 
     titles = {match.title for match in matches}
     assert "Fried chicken" not in titles
@@ -60,7 +84,9 @@ def test_pantry_that_matches_no_recipe_returns_nothing(
 def test_limit_caps_the_number_of_rows(
     session: Session, catalog: dict[str, int], fixture_recipes: dict[str, int]
 ) -> None:
-    matches = find_matches(session, pantry(catalog, "egg", "rice", "garlic"), TEST_USER_ID, limit=1)
+    matches = find_matches(
+        session, pantry(catalog, "egg", "rice", "garlic"), TEST_USER_ID, limit=1, min_match=0
+    )
 
     assert [match.title for match in matches] == ["Egg fried rice"]
 
@@ -119,7 +145,7 @@ def test_pantry_items_of_other_users_do_not_affect_results(
     session.add(PantryItem(user_id=OTHER_USER_ID, ingredient_id=catalog["salt"]))
     session.flush()
 
-    matches = find_matches(session, pantry(catalog, "egg"), TEST_USER_ID)
+    matches = find_matches(session, pantry(catalog, "egg"), TEST_USER_ID, min_match=0)
 
     boiled_egg = next(match for match in matches if match.title == "Boiled egg")
     assert boiled_egg.have == 1
@@ -129,7 +155,7 @@ def test_find_matches_itself_assumes_nothing(
     session: Session, catalog: dict[str, int], fixture_recipes: dict[str, int]
 ) -> None:
     """The matching query is pure: the endpoint adds assumed staples, not this function."""
-    matches = find_matches(session, pantry(catalog, "egg"), TEST_USER_ID)
+    matches = find_matches(session, pantry(catalog, "egg"), TEST_USER_ID, min_match=0)
 
     boiled_egg = next(match for match in matches if match.title == "Boiled egg")
     assert (boiled_egg.have, boiled_egg.total) == (1, 3)
@@ -154,7 +180,7 @@ def test_assumed_staples_never_qualify_a_recipe_alone(
 ) -> None:
     """A pantry of rice must not surface Boiled egg just because water is assumed."""
     matches = find_matches(
-        session, pantry(catalog, "rice"), TEST_USER_ID, staple_ids=[catalog["water"]]
+        session, pantry(catalog, "rice"), TEST_USER_ID, staple_ids=[catalog["water"]], min_match=0
     )
 
     assert "Boiled egg" not in {match.title for match in matches}

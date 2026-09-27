@@ -1,6 +1,6 @@
 import { HttpResponse, http } from 'msw'
 
-import type { Ingredient, PantryItem } from '../api/types'
+import type { Ingredient, Match, PantryItem } from '../api/types'
 
 const API = 'http://localhost:8000'
 
@@ -15,9 +15,27 @@ export const catalog: Ingredient[] = [
 
 /** Mutable per-test pantry state, reset by `resetPantry`. */
 let pantry: PantryItem[] = []
+let matches: Match[] = []
 
 export function resetPantry(items: PantryItem[] = []) {
   pantry = [...items]
+}
+
+export function resetMatches(rows: Match[] = []) {
+  matches = [...rows]
+}
+
+export function match(overrides: Partial<Match> = {}): Match {
+  return {
+    id: 1,
+    title: 'Egg fried rice',
+    thumbnail_url: 'https://example.test/egg-fried-rice.jpg',
+    have: 3,
+    total: 7,
+    match: 43,
+    missing: ['Oil', 'Salt', 'Soy Sauce', 'Spring Onion'],
+    ...overrides,
+  }
 }
 
 export function pantryItem(ingredientId: number): PantryItem {
@@ -44,5 +62,5 @@ export const handlers = [
     pantry = pantry.filter((item) => item.ingredient_id !== Number(params['id']))
     return new HttpResponse(null, { status: 204 })
   }),
-  http.get(`${API}/matches`, () => HttpResponse.json([])),
+  http.get(`${API}/matches`, () => HttpResponse.json(matches)),
 ]

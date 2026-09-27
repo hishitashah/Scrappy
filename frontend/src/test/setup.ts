@@ -3,6 +3,7 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll } from 'vitest'
 
+import { resetMatches, resetPantry } from './handlers'
 import { server } from './server'
 
 // jsdom implements neither of these, and Headless UI's Combobox uses both.
@@ -18,5 +19,7 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => {
   cleanup()
   server.resetHandlers()
+  resetPantry()
+  resetMatches()
 })
 afterAll(() => server.close())

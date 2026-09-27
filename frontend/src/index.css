@@ -13,6 +13,8 @@
   --color-ink: #000000;
   --color-muted: #5d6357;
 
+  /* The wordmark only; everything else stays Poppins. */
+  --font-brand: 'Shadows Into Light', 'Poppins', ui-sans-serif, cursive;
   --font-display: 'Poppins', ui-sans-serif, system-ui, sans-serif;
   --font-sans: 'Poppins', ui-sans-serif, system-ui, sans-serif;
 

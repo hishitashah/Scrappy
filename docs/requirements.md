@@ -124,6 +124,8 @@ These are deliberate. Don't change them without updating this section.
 
 **Everything AI-generated says so.** Substitutions and generated recipes are labeled in the UI, because a suggestion from a model is a different kind of claim from a recipe a person wrote and an ingredient count computed in SQL.
 
+**Results stop at 50%.** A recipe the user has under half the ingredients for is a shopping list, not a suggestion, so it is not shown at all. The floor lives in `MIN_MATCH_PERCENT` in `backend/app/matching.py`; `find_matches` takes it as a parameter so tests can rank without it. The cost is that a nearly-empty pantry often shows nothing, which the empty state addresses directly by asking for more ingredients.
+
 **Water is the only assumed staple.** Water comes out of a tap, so making the user type it adds nothing, and 150 of the catalog's 791 recipes call for it. Everything else — salt, oil, flour — is a real shopping decision and still has to be in the pantry to count, so match percentages stay honest. Water is never suggested by the autocomplete, since it always counts already, and the pantry editor shows a hint: "Tip: water is assumed. Add basics like salt and oil for more accurate matches."
 
 Assumed staples supplement a pantry; they never create one. A user with an empty pantry still matches nothing, because "you can make anything that only needs water" is not a useful answer. The list lives in `backend/app/staples.py`, mirrored by `ASSUMED_STAPLES` in the frontend's `ingredientFilter.ts`, and adding to it is a spec change.
@@ -182,17 +184,20 @@ Assumed staples supplement a pantry; they never create one. A user with an empty
 - Each result shows a match percentage and a have/need count.
 - Results are sorted by match percentage, then number of owned ingredients, then title, so the order is stable.
 - Results update automatically after any pantry change.
-- There are two distinct empty states. Empty pantry: "Add a few ingredients to see what you can make." No overlap: "No recipes use these ingredients yet."
+- Recipes the user has under half the ingredients for are not shown at all.
+- There are two distinct empty states. Empty pantry: "Add a few ingredients to see what you can make." Nothing above the floor: "Nothing's close enough yet. Add a few more ingredients."
 
 **US-6** — As a user, I want to see exactly which ingredients I'm missing for a given recipe, so that I can judge whether it's worth it.
 - Missing ingredients are named on each result card and marked on the detail page.
 - The missing count always equals total minus have.
 
-**US-7** — As a user, I want to open a recipe and see full instructions, so that I can cook it without leaving the app.
-- The page shows the photo, title, category, cuisine, every ingredient with its measurement, and numbered steps.
-- Owned and missing ingredients are visually distinct.
+**US-7** — As a user, I want to open a recipe and step through it, so that I can cook it without leaving the app.
+- Opening a result shows an intro page: the photo, the title, category and cuisine, and a link onward.
+- A second page lists every ingredient with its measurement, with owned and missing ones visually distinct.
+- A third page lists the numbered steps.
+- Each page has its own URL, so the browser's back and forward buttons move between them and a refresh keeps the user where they were.
 - Links to the recipe's video and original source appear when available.
-- Going back returns to the results without reloading them.
+- Going back from the intro page returns to the results without reloading them.
 
 ### AI assistance
 
@@ -228,9 +233,13 @@ Desktop-only. No mobile breakpoints, no touch-specific interactions, no phone la
 |---|---|---|
 | Login | Shown whenever signed out | App name and a one-line pitch; Amplify's sign-in, create-account, and forgot-password forms |
 | Home | `/` | Header: menu button (Home, Log out), app name, mascot; pantry editor with the basics hint; ranked results |
-| Recipe detail | `/recipes/:id` | Back link; photo; title; category and cuisine tags; ingredients with owned/missing marks; numbered steps; video and source links; "Suggest substitutions" for missing ingredients (F7), with results shown in a labeled panel |
+| Recipe intro | `/recipes/:id` | Back link; photo beside a forest card holding the title, category and cuisine; chevron onward to the ingredients |
+| Recipe ingredients | `/recipes/:id/ingredients` | "INGREDIENTS" heading; forest card listing every ingredient with its measurement, owned and missing visually distinct; "Suggest substitutions" for missing ingredients (F7); chevron onward |
+| Recipe steps | `/recipes/:id/steps` | "STEP BY STEP INSTRUCTIONS" heading; forest card with the numbered steps; video and source links |
 
-Generated recipes (F8) use the same detail route and layout, with an "AI-generated" badge in place of the category tags and no video or source link. The "no overlap" empty state on Home carries the button that creates one.
+**The recipe flow is paged, not one long page.** Three screens, each with its own URL, following the mockups in `docs/`: a black uppercase heading on the cream field at the left, the content in a rounded forest card at the right, and a circular chevron to advance. One `GET /recipes/{id}` call serves all three pages; the data is already cached by the time the user advances, so moving between them is instant.
+
+Generated recipes (F8) use the same three routes and layout, with an "AI-generated" badge in place of the category tags and no video or source link. The "no overlap" empty state on Home carries the button that creates one.
 
 **Layout.** Home uses two fixed columns: the pantry on the left, results on the right. No responsive stacking or breakpoint logic is implemented.
 
@@ -431,7 +440,7 @@ Note: only `ingredient_id` is ever sent or stored for a pantry item. There is no
 
 ### 10.2 F2 + F3 — Recipe matching and transparency
 
-**Behavior.** A results list of up to 20 cards. Each card shows a thumbnail, the title, a percentage badge, "You have 3 of 7," and "Missing: oil, salt, soy sauce, spring onion." The list updates after every pantry change.
+**Behavior.** A results list of up to 20 cards inside the forest results panel, showing only recipes at 50% or above. Each card shows the title, a percentage badge, "You have 3 of 7," and "Missing: oil, salt, soy sauce, spring onion." The list is deliberately typographic: photos appear only once a recipe is opened (10.3), which keeps the ranked list quick to scan and the home page free of twenty remote images. The list updates after every pantry change.
 
 **Frontend**
 
@@ -442,7 +451,7 @@ Note: only `ingredient_id` is ever sent or stored for a pantry item. There is no
 - Errors show inline with "Try again."
 - Clicking a card navigates to `/recipes/:id`.
 
-**API.** `GET /matches?limit=20` (`limit` 1–50) returns `[{id, title, thumbnail_url, have, total, match, missing}]`.
+**API.** `GET /matches?limit=20` (`limit` 1–50) returns `[{id, title, thumbnail_url, have, total, match, missing}]`. `thumbnail_url` stays in the response, unused by the MVP UI, because the ranked list shows no images; it costs nothing and saves an API change if that ever changes.
 
 **Backend**
 
@@ -473,15 +482,17 @@ FROM scored
 -- An assumed staple raises a recipe's score but never qualifies it alone: water appears
 -- in 150 recipes, and listing all of them for an unrelated pantry is noise.
 WHERE from_pantry > 0
+  -- Under half the ingredients is a shopping list, not a suggestion (section 4).
+  AND 100.0 * have / total >= :min_match
 ORDER BY match DESC, have DESC, title ASC
 LIMIT :limit;
 ```
 
 - `have`, `total`, and `missing` come from one query, so `total − have = len(missing)` always holds.
 - `user_id` only scopes generated recipes. No fixture recipe is generated, so the worked example below is unaffected.
-- Confirmed example: a fixture catalog with "Egg fried rice" (rice, egg, garlic, oil, salt, soy sauce, spring onion) and "Boiled egg" (egg, water, salt), with a pantry of egg, rice, and garlic, returns exactly:
-  1. Egg fried rice: 3/7, 43%, missing oil, salt, soy sauce, spring onion.
-  2. Boiled egg: 1/3, 33%, missing water, salt.
+- Confirmed example: a fixture catalog with "Egg fried rice" (rice, egg, garlic, oil, salt, soy sauce, spring onion) and "Boiled egg" (egg, water, salt), with a pantry of egg, water, rice, and garlic, returns exactly:
+  1. Boiled egg: 2/3, 67%, missing salt.
+  Egg fried rice (3/7, 43%) is ranked but hidden by the 50% floor; passing `min_match=0` returns it first, then Boiled egg at 1/3, which is the ranking order without the floor.
 
 **Scaling note.** At a few thousand recipe-ingredient rows, a full scan takes milliseconds. At much larger scale, first filter to recipes containing at least one owned ingredient, using an index on `recipe_ingredients.ingredient_id`.
 
@@ -493,16 +504,21 @@ LIMIT :limit;
 - An empty pantry returns `[]`.
 - A pantry whose ingredients appear in no recipe returns `[]`.
 - An assumed staple raises a recipe's score (a pantry of egg scores Boiled egg 2/3), but never qualifies one alone (a pantry of rice must not surface Boiled egg).
+- A recipe below the floor is hidden by default and returned when `min_match=0`.
 
 ### 10.3 F4 — Recipe detail
 
-**Behavior.** As described in US-7. Owned ingredients are green; missing ones are muted red.
+**Behavior.** As described in US-7: three pages — intro, ingredients, steps. Owned ingredients are marked as owned; missing ones are visually distinct.
 
 **Frontend**
 
-- Route `/recipes/:id` renders `RecipeDetailPage` with `useRecipe(id)`.
+- Three routes, all rendering from one `useRecipe(id)` query so advancing costs no request:
+  - `/recipes/:id` — `RecipeIntroPage`: the photo beside a forest card with the title, category and cuisine.
+  - `/recipes/:id/ingredients` — `RecipeIngredientsPage`.
+  - `/recipes/:id/steps` — `RecipeStepsPage`.
+- A shared `RecipePageFrame` holds the heading, the forest card and the circular chevron, so the three pages stay visually identical.
 - Back navigation uses browser history, so the cached results reappear instantly.
-- A 404 shows "Recipe not found" with a link home.
+- A 404 shows "Recipe not found" with a link home, on any of the three routes.
 
 **API.** `GET /recipes/{id}` returns `{id, title, category, area, image_url, youtube_url, source_url, steps: [str], ingredients: [{id, display_name, measure, owned}]}`, or 404.
 
@@ -510,7 +526,7 @@ LIMIT :limit;
 
 When at least one ingredient is missing, the page also shows the "Suggest substitutions" button described in 10.11. A generated recipe (F8) renders through the same page and component, with an "AI-generated" badge.
 
-**Tests.** A missing ID returns 404; `owned` flags match the pantry; steps and ingredients come back in order; a generated recipe belonging to another user returns 404.
+**Tests.** Backend: a missing ID returns 404; `owned` flags match the pantry; steps and ingredients come back in order; a generated recipe belonging to another user returns 404. Frontend: each of the three pages renders its own content, the chevron advances to the next URL, and a 404 shows "Recipe not found" on every one of them.
 
 ### 10.4 F5 + F6 — Accounts, login wall, saved pantry
 
