@@ -8,15 +8,16 @@ export function AppFrame({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-cream">
       <div className="mx-auto max-w-[1180px] px-10 py-8">
-        <header className="mb-8 flex items-start justify-between gap-8">
-          <div className="flex items-start gap-6">
-            <AppMenu />
-            <div>
-              <h1 className="font-display text-5xl font-extrabold tracking-tight">SCRAPPY</h1>
-              <p className="mt-2 max-w-sm text-sm text-muted">
-                Quick, simple meals from what you already have
-              </p>
-            </div>
+        {/* A fixed 13rem gutter holds the menu, so its 11rem dropdown opens over empty
+            space instead of the text beside it — at any window width, not just this one. */}
+        <header className="mb-8 grid grid-cols-[13rem_1fr_auto] items-start gap-6">
+          <AppMenu />
+
+          <div>
+            <h1 className="font-brand text-8xl leading-none font-normal text-forest">Scrappy</h1>
+            <p className="mt-6 max-w-sm text-base text-muted">
+              Quick, simple meals from what you already have!
+            </p>
           </div>
 
           {/* Decoration, so it is hidden from assistive technology. */}
@@ -36,7 +37,7 @@ export function AppFrame({ children }: { children: ReactNode }) {
 
 function AppMenu() {
   return (
-    <Menu as="div" className="relative mt-1 shrink-0">
+    <Menu as="div" className="relative mt-3 w-fit">
       <HeadlessMenuButton
         aria-label="Menu"
         className="flex size-14 items-center justify-center rounded-full bg-forest text-cream transition hover:bg-forest-dark"

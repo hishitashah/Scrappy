@@ -14,6 +14,9 @@ from dataclasses import dataclass
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+# Below this, a "match" is really a shopping list, so it isn't shown at all (spec 10.2).
+MIN_MATCH_PERCENT = 50
+
 MATCH_QUERY = text("""
 WITH scored AS (
   SELECT r.id, r.title, r.image_url,
@@ -37,6 +40,7 @@ FROM scored
 -- An assumed staple raises a recipe's score but never qualifies it on its own: water
 -- appears in 150 recipes, and listing all of them for an unrelated pantry is noise.
 WHERE from_pantry > 0
+  AND 100.0 * have / total >= :min_match
 ORDER BY match DESC, have DESC, title ASC
 LIMIT :limit
 """)
@@ -61,11 +65,13 @@ def find_matches(
     user_id: str,
     limit: int = 20,
     staple_ids: Sequence[int] = (),
+    min_match: int = MIN_MATCH_PERCENT,
 ) -> list[Match]:
     """Rank recipes by how much of each the user can already make.
 
     `ingredient_ids` is the real pantry; `staple_ids` are assumed staples (spec section 4),
     which count toward a recipe's score but never qualify a recipe by themselves.
+    `min_match` drops recipes the user is too far from making; pass 0 to rank everything.
 
     A pure function of its arguments: no HTTP, no auth, no request state, so it can be
     tested directly. An empty pantry matches nothing, and never reaches the database.
@@ -80,6 +86,7 @@ def find_matches(
             "have": sorted({*pantry, *staple_ids}),
             "pantry": pantry,
             "user_id": user_id,
+            "min_match": min_match,
             "limit": limit,
         },
     ).all()

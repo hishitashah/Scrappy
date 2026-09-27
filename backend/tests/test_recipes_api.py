@@ -16,7 +16,7 @@ def fill_pantry(session: Session, catalog: dict[str, int], *names: str) -> None:
 def test_matches_ranks_recipes(
     client: TestClient, session: Session, catalog: dict[str, int], fixture_recipes: dict[str, int]
 ) -> None:
-    """Water is assumed, so Boiled egg counts 2 of 3 and outranks Egg fried rice."""
+    """Water is assumed, so Boiled egg counts 2 of 3. Egg fried rice is below the 50% floor."""
     fill_pantry(session, catalog, "egg", "rice", "garlic")
 
     response = client.get("/matches")
@@ -25,10 +25,8 @@ def test_matches_ranks_recipes(
     body = response.json()
     assert [(row["title"], row["have"], row["total"], row["match"]) for row in body] == [
         ("Boiled egg", 2, 3, 67),
-        ("Egg fried rice", 3, 7, 43),
     ]
     assert body[0]["missing"] == ["Salt"]
-    assert body[1]["missing"] == ["Oil", "Salt", "Soy Sauce", "Spring Onion"]
 
 
 def test_assumed_water_never_creates_matches_on_its_own(
@@ -44,10 +42,21 @@ def test_matches_is_empty_for_an_empty_pantry(
     assert client.get("/matches").json() == []
 
 
+def test_matches_hides_recipes_below_the_floor(
+    client: TestClient, session: Session, catalog: dict[str, int], fixture_recipes: dict[str, int]
+) -> None:
+    """A pantry of flour alone makes Pancakes (1/1) but not Fried chicken (1/5)."""
+    fill_pantry(session, catalog, "flour")
+
+    titles = [row["title"] for row in client.get("/matches").json()]
+
+    assert titles == ["Pancakes"]
+
+
 def test_matches_limit_is_validated(
     client: TestClient, session: Session, catalog: dict[str, int], fixture_recipes: dict[str, int]
 ) -> None:
-    fill_pantry(session, catalog, "egg")
+    fill_pantry(session, catalog, "flour")
 
     assert len(client.get("/matches?limit=1").json()) == 1
     assert client.get("/matches?limit=0").status_code == 422
