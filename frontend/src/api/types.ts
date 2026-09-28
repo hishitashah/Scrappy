@@ -22,3 +22,22 @@ export interface Match {
   match: number
   missing: string[]
 }
+
+export interface RecipeIngredient {
+  id: number
+  display_name: string
+  measure: string | null
+  owned: boolean
+}
+
+export interface RecipeDetail {
+  id: number
+  title: string
+  category: string | null
+  area: string | null
+  image_url: string | null
+  youtube_url: string | null
+  source_url: string | null
+  steps: string[]
+  ingredients: RecipeIngredient[]
+}

@@ -3,12 +3,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { apiFetch } from './client'
-import type { Ingredient, Match, PantryItem } from './types'
+import type { Ingredient, Match, PantryItem, RecipeDetail } from './types'
 
 export const queryKeys = {
   ingredients: ['ingredients'] as const,
   pantry: ['pantry'] as const,
   matches: ['matches'] as const,
+  recipe: (id: number) => ['recipe', id] as const,
 }
 
 /** The catalog is downloaded once per session and filtered in the browser (spec 10.1). */
@@ -31,6 +32,16 @@ export function useMatches() {
   return useQuery({
     queryKey: queryKeys.matches,
     queryFn: () => apiFetch<Match[]>('/matches'),
+  })
+}
+
+/** One query serves all three recipe pages, so advancing between them costs no request. */
+export function useRecipe(id: number) {
+  return useQuery({
+    queryKey: queryKeys.recipe(id),
+    queryFn: () => apiFetch<RecipeDetail>(`/recipes/${id}`),
+    enabled: Number.isFinite(id),
+    retry: false, // a 404 is an answer, not a failure worth retrying
   })
 }
 

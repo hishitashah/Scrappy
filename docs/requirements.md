@@ -508,15 +508,19 @@ LIMIT :limit;
 
 ### 10.3 F4 — Recipe detail
 
-**Behavior.** As described in US-7: three pages — intro, ingredients, steps. Owned ingredients are marked as owned; missing ones are visually distinct.
+**Behavior.** As described in US-7: three pages — intro, ingredients, steps.
+
+Owned and missing ingredients differ by mark, weight and opacity, never by color alone: an owned row carries a check and full-strength text, a missing one is dimmed with a "missing" tag. (The earlier "green for owned, red for missing" predates the forest card, on which red is unreadable.) The ingredients page also shows "You have 4 of 6" above the list, counted from the `owned` flags the API returned — display of returned data, not a second implementation of matching, which stays in the SQL of 10.2.
+
+Every page carries labelled navigation rather than bare arrows: the intro offers "Ingredients", the ingredients page "Overview" back and "Instructions" forward, and the steps page "Ingredients" back. The steps page ends the flow with "Back to results" instead of a forward arrow, which would have nowhere to go.
 
 **Frontend**
 
 - Three routes, all rendering from one `useRecipe(id)` query so advancing costs no request:
   - `/recipes/:id` — `RecipeIntroPage`: the photo beside a forest card with the title, category and cuisine.
   - `/recipes/:id/ingredients` — `RecipeIngredientsPage`.
-  - `/recipes/:id/steps` — `RecipeStepsPage`.
-- A shared `RecipePageFrame` holds the heading, the forest card and the circular chevron, so the three pages stay visually identical.
+  - `/recipes/:id/steps` — `RecipeStepsPage`, which also shows the video and source links when present.
+- A shared `RecipePageFrame` holds the heading, the forest card and the circular chevron, and owns the loading skeleton, the error state and the 404, so the three pages stay identical in both looks and behavior.
 - Back navigation uses browser history, so the cached results reappear instantly.
 - A 404 shows "Recipe not found" with a link home, on any of the three routes.
 
@@ -611,7 +615,7 @@ When at least one ingredient is missing, the page also shows the "Suggest substi
 6. **Write** everything in one transaction:
    - Upsert recipes by `(source, source_id)`.
    - Replace each recipe's ingredient rows.
-   - Split `strInstructions` on line breaks into `steps`, dropping blank lines and "STEP n" prefixes.
+   - Split `strInstructions` on line breaks into `steps`, dropping blank lines and every form of numbering the source uses: "STEP n" prefixes, a number alone on its own line (41 recipes), and "3." / "0.\t" / "2)" prefixes (46 recipes). The UI numbers the steps itself, so numbering left in the data renders as a step of its own. A number is only treated as a prefix when punctuation and whitespace follow it, so a step that genuinely opens with a quantity ("2 eggs, beaten") keeps it.
 7. **Print a summary:** recipes, ingredients created, ingredients folded, and unmapped names.
 
 Re-running the script must change nothing.

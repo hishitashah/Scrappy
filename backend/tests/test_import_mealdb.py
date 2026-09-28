@@ -52,6 +52,32 @@ def test_split_steps_drops_blanks_and_step_prefixes() -> None:
     assert split_steps(None) == []
 
 
+def test_split_steps_drops_numbers_on_their_own_line() -> None:
+    """Shakshouka's shape: the number is its own line, then the instruction."""
+    raw = "1\r\nPan fry the garlic.\r\n2\r\nAdd the tomatoes.\r\n3.\r\nServe."
+
+    assert split_steps(raw) == ["Pan fry the garlic.", "Add the tomatoes.", "Serve."]
+
+
+def test_split_steps_strips_numeric_prefixes() -> None:
+    """Tortang Talong's shape: "0.\tGrill the eggplant", starting from zero."""
+    raw = "0.\tGrill the eggplant\n1.\tPeel the skin\n2) Crack the eggs\n3 - Beat them"
+
+    assert split_steps(raw) == [
+        "Grill the eggplant",
+        "Peel the skin",
+        "Crack the eggs",
+        "Beat them",
+    ]
+
+
+def test_split_steps_keeps_numbers_that_are_part_of_the_instruction() -> None:
+    """A step that opens with a quantity, or contains a range, must not lose it."""
+    raw = "2 eggs, beaten\nSteam for 1-2 minutes.\n350ml water, warmed"
+
+    assert split_steps(raw) == ["2 eggs, beaten", "Steam for 1-2 minutes.", "350ml water, warmed"]
+
+
 def test_parse_meal_pairs_ingredients_with_measures() -> None:
     parsed = parse_meal(meal_fixture())
 

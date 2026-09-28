@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import csv
 import json
+import re
 import string
 import sys
 from collections.abc import Iterable, Iterator, Sequence
@@ -76,15 +77,25 @@ def _clean(value: Any) -> str | None:
     return stripped or None
 
 
+# TheMealDB numbers its steps inconsistently: some recipes put the number on its own line,
+# others prefix the text with "3." or "0.\t". The UI numbers the steps itself, so any
+# numbering in the data is stripped — otherwise "1" renders as a step of its own.
+_BARE_NUMBER = re.compile(r"^\d+\s*[.):\-]?$")
+# A prefix only counts as numbering when punctuation and whitespace follow, so a step that
+# genuinely opens with a quantity ("2 eggs, beaten") keeps its number.
+_NUMBER_PREFIX = re.compile(r"^\d+\s*[.):\-]\s+")
+
+
 def split_steps(instructions: str | None) -> list[str]:
-    """Split instructions into numbered steps, dropping blanks and "STEP n" prefixes."""
+    """Split instructions into steps, dropping blanks and any numbering in the source."""
     if not instructions:
         return []
     steps = []
     for line in instructions.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
         step = line.strip()
-        if not step:
+        if not step or _BARE_NUMBER.match(step):
             continue
+
         lowered = step.lower()
         if lowered.startswith("step"):
             # "STEP 1" alone is a heading; "STEP 1 Heat the oil" keeps the text.
@@ -92,9 +103,10 @@ def split_steps(instructions: str | None) -> list[str]:
             digits, _, rest = remainder.partition(" ")
             if digits.isdigit():
                 step = rest.strip()
-                if not step:
-                    continue
-        steps.append(step)
+
+        step = _NUMBER_PREFIX.sub("", step).strip()
+        if step:
+            steps.append(step)
     return steps
 
 
