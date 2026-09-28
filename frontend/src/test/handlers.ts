@@ -1,6 +1,6 @@
 import { HttpResponse, http } from 'msw'
 
-import type { Ingredient, Match, PantryItem } from '../api/types'
+import type { Ingredient, Match, PantryItem, RecipeDetail } from '../api/types'
 
 const API = 'http://localhost:8000'
 
@@ -47,6 +47,35 @@ export function pantryItem(ingredientId: number): PantryItem {
   }
 }
 
+/** A fixture recipe: 4 of 6 owned, so the count line and both row styles are exercised. */
+export function recipe(overrides: Partial<RecipeDetail> = {}): RecipeDetail {
+  return {
+    id: 42,
+    title: 'Egg fried rice',
+    category: 'Rice',
+    area: 'Chinese',
+    image_url: 'https://example.test/egg-fried-rice.jpg',
+    youtube_url: 'https://example.test/video',
+    source_url: 'https://example.test/source',
+    steps: ['Boil the rice.', 'Fry the eggs.', 'Combine and serve.'],
+    ingredients: [
+      { id: 2, display_name: 'Rice', measure: '2 cups', owned: true },
+      { id: 1, display_name: 'Egg', measure: '3', owned: true },
+      { id: 3, display_name: 'Garlic', measure: '2 cloves', owned: true },
+      { id: 6, display_name: 'Water', measure: '1 cup', owned: true },
+      { id: 4, display_name: 'Olive Oil', measure: '1 tbsp', owned: false },
+      { id: 5, display_name: 'Salt', measure: null, owned: false },
+    ],
+    ...overrides,
+  }
+}
+
+let recipeDetail: RecipeDetail | null = recipe()
+
+export function resetRecipe(next: RecipeDetail | null = recipe()) {
+  recipeDetail = next
+}
+
 export const handlers = [
   http.get(`${API}/ingredients`, () => HttpResponse.json(catalog)),
   http.get(`${API}/pantry`, () => HttpResponse.json(pantry)),
@@ -63,4 +92,9 @@ export const handlers = [
     return new HttpResponse(null, { status: 204 })
   }),
   http.get(`${API}/matches`, () => HttpResponse.json(matches)),
+  http.get(`${API}/recipes/:id`, () =>
+    recipeDetail
+      ? HttpResponse.json(recipeDetail)
+      : HttpResponse.json({ detail: 'Recipe not found' }, { status: 404 }),
+  ),
 ]
