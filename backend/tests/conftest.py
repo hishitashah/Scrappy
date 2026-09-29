@@ -11,6 +11,7 @@ from collections.abc import Iterator
 import pytest
 from alembic import command
 from alembic.config import Config
+from fastapi import Request
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
@@ -35,6 +36,8 @@ def engine() -> Iterator[Engine]:
     """Migrate the test database to head once, then share one engine for the session."""
     alembic_config = Config("alembic.ini")
     alembic_config.set_main_option("sqlalchemy.url", TEST_DATABASE_URL)
+    # Don't let Alembic reconfigure logging out from under the tests (see migrations/env.py).
+    alembic_config.attributes["configure_logger"] = False
     command.upgrade(alembic_config, "head")
 
     engine = create_engine(TEST_DATABASE_URL)
@@ -70,8 +73,14 @@ def client(session: Session, test_user: str) -> Iterator[TestClient]:
 
     Auth is overridden with a fixed user id: token verification has its own tests.
     """
+
+    def override_current_user(request: Request) -> str:
+        # Mirrors the real dependency, including the user it hands to the request log.
+        request.state.user_id = TEST_USER_ID
+        return TEST_USER_ID
+
     app.dependency_overrides[get_session] = lambda: session
-    app.dependency_overrides[get_current_user] = lambda: TEST_USER_ID
+    app.dependency_overrides[get_current_user] = override_current_user
     try:
         yield TestClient(app)
     finally:

@@ -746,9 +746,12 @@ Runs only on pushes to `main`, after all three jobs pass. It uses `concurrency: 
 ### 10.9 E5 — Health and logging
 
 - **`GET /health`** returns `{"status": "ok", "version": "<APP_VERSION>"}` and never touches the database, so health checks don't wake Neon.
-- **Request logging:** a middleware logs one line per request with the method, path, status, duration in milliseconds, and user ID. View the logs with `aws logs tail /aws/lambda/scrappy-api --follow`.
-- **Errors:** an exception handler logs unexpected errors with their stack trace and returns `{"detail": "Internal error"}`.
-- **Frontend:** a top-level error boundary.
+- **Request logging:** `app/observability.py` holds a middleware that logs one line per request with the method, path, status, duration in milliseconds, and user ID. Lines are JSON, one object per line, so CloudWatch Logs Insights can query the fields directly (`fields path, duration_ms | filter status >= 500`) instead of parsing text. Uvicorn's own access log is disabled, since it would duplicate every line with less detail. View the logs with `aws logs tail /aws/lambda/scrappy-api --follow`.
+  - The user ID reaches the middleware through `request.state.user_id`, set by `get_current_user`: middleware runs outside the dependency, so it cannot ask for the user directly. `/health` therefore logs no user, which is correct — it needs no auth.
+  - A 4xx is logged at INFO, not ERROR: a missing recipe is a normal answer, not an incident.
+- **Errors:** an exception handler logs unexpected errors with their stack trace and returns `{"detail": "Internal error"}`, so nothing about the internals reaches the caller.
+- **Migrations and logging:** `migrations/env.py` calls `fileConfig` only when Alembic runs from the command line. Driven in-process (as the tests do), it would replace the app's and pytest's log handlers.
+- **Frontend:** a top-level `ErrorBoundary` wraps the app in `main.tsx`. A render error shows a reload panel rather than a blank page, and the detail goes to the browser console.
 
 ### 10.10 E6 — README
 

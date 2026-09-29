@@ -15,7 +15,11 @@ from app.settings import get_settings
 
 config = context.config
 
-if config.config_file_name is not None:
+# alembic.ini's [loggers] section reconfigures Python logging and replaces the root
+# handlers. That is right for `alembic upgrade` on the command line, but not when the
+# tests drive Alembic in-process: it would wipe the app's and pytest's log handlers.
+# The test setup passes configure_logger=False.
+if config.config_file_name is not None and config.attributes.get("configure_logger", True):
     fileConfig(config.config_file_name)
 
 # Autogenerate compares the live database against these table definitions.

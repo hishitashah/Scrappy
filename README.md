@@ -49,7 +49,7 @@ flowchart LR
 
 ## Testing
 
-**174 tests**, written alongside each feature rather than after it.
+**182 tests**, written alongside each feature rather than after it.
 
 | Area | Tests | What they cover |
 |---|---:|---|
@@ -61,13 +61,14 @@ flowchart LR
 | Schema | 7 | Unique constraints, cascade deletes, JSON round-trips |
 | Auth | 6 | Shared mode, the `shared-user` upsert, production refusing an unauthenticated API |
 | Assumed staples | 3 | Water is the only one, and it resolves against the catalog |
-| Health | 1 | `/health` reports the version without touching the database |
-| **Backend total** | **128** | pytest against a real Postgres 17 database |
+| Health and logging | 7 | `/health`, one JSON log line per request, and the safe 500 body |
+| **Backend total** | **134** | pytest against a real Postgres 17 database |
 | Browser-side filtering | 16 | Quantity stripping, prefix ranking, aliases, "Did you mean…?", assumed staples |
 | Recipe pages | 14 | All three paged screens, navigation, links, 404 on every route |
 | Pantry editor | 10 | Autocomplete, optimistic removal and rollback, both no-match states |
 | Results list | 6 | Have/total counts, missing names, both empty states, error recovery |
-| **Frontend total** | **46** | Vitest and React Testing Library, with MSW mocking the API |
+| Error boundary | 2 | A crash shows a reload panel instead of a blank page |
+| **Frontend total** | **48** | Vitest and React Testing Library, with MSW mocking the API |
 
 **Backend tests run against real Postgres**, not an in-memory stand-in, because the matching
 query uses Postgres-specific SQL. Each test runs inside a transaction that is rolled back, so

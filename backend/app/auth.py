@@ -11,7 +11,7 @@ Either way the user row is upserted, because pantry rows reference `users.id`.
 
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -23,6 +23,7 @@ SHARED_USER_ID = "shared-user"
 
 
 def get_current_user(
+    request: Request,
     session: Annotated[Session, Depends(get_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> str:
@@ -34,6 +35,9 @@ def get_current_user(
     user_id = SHARED_USER_ID
     session.execute(insert(User).values(id=user_id).on_conflict_do_nothing())
     session.commit()
+    # The request log line is written by middleware, outside the dependency, so hand the
+    # user over on request.state rather than trying to thread it through (spec 10.9).
+    request.state.user_id = user_id
     return user_id
 
 

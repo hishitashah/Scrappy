@@ -3,6 +3,7 @@
 from collections.abc import Iterator
 
 import pytest
+from fastapi import Request
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -12,6 +13,11 @@ from app.db import get_session
 from app.main import app
 from app.models import User
 from app.settings import Settings, get_settings
+
+
+def fake_request() -> Request:
+    """A bare request, enough for the dependency to record the user on `state`."""
+    return Request({"type": "http", "method": "GET", "path": "/pantry", "headers": []})
 
 
 @pytest.fixture
@@ -36,14 +42,18 @@ def test_shared_mode_creates_the_shared_user_once(
 
 
 def test_shared_mode_returns_the_fixed_user(session: Session) -> None:
-    user_id = get_current_user(session, Settings(env="local", auth_mode="shared"))
+    request = fake_request()
+
+    user_id = get_current_user(request, session, Settings(env="local", auth_mode="shared"))
 
     assert user_id == SHARED_USER_ID
+    # The request log line reads the user from here (spec 10.9).
+    assert request.state.user_id == SHARED_USER_ID
 
 
 def test_cognito_mode_is_not_implemented_yet(session: Session) -> None:
     with pytest.raises(NotImplementedError):
-        get_current_user(session, Settings(env="local", auth_mode="cognito"))
+        get_current_user(fake_request(), session, Settings(env="local", auth_mode="cognito"))
 
 
 def test_production_refuses_shared_mode() -> None:
