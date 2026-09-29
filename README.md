@@ -49,9 +49,33 @@ flowchart LR
 
 ## Testing
 
-- **Backend:** pytest against a real Postgres 17 database (Docker locally, a service container in CI). Each test runs in a transaction that's rolled back afterwards.
-- **Frontend:** Vitest and React Testing Library, with MSW mocking the API.
-- **CI:** every pull request runs lint, format, type checks, tests, and a Terraform validation. Merges to `main` deploy automatically.
+**174 tests**, written alongside each feature rather than after it.
+
+| Area | Tests | What they cover |
+|---|---:|---|
+| Ingredient normalization | 62 | Case, spacing, punctuation, plurals, accents, the `inflect` exceptions, aliases, idempotency |
+| TheMealDB import | 16 | Parsing, measure pairing, step numbering, duplicate merging, idempotent re-runs, alias folding |
+| Matching | 14 | The worked example from the spec, the 50% floor, assumed staples, per-user visibility of generated recipes |
+| Pantry API | 10 | Duplicate adds, unknown IDs, idempotent delete, one user can't touch another's pantry |
+| Recipes API | 9 | Detail payload, ingredient order, `owned` flags, 404s |
+| Schema | 7 | Unique constraints, cascade deletes, JSON round-trips |
+| Auth | 6 | Shared mode, the `shared-user` upsert, production refusing an unauthenticated API |
+| Assumed staples | 3 | Water is the only one, and it resolves against the catalog |
+| Health | 1 | `/health` reports the version without touching the database |
+| **Backend total** | **128** | pytest against a real Postgres 17 database |
+| Browser-side filtering | 16 | Quantity stripping, prefix ranking, aliases, "Did you mean…?", assumed staples |
+| Recipe pages | 14 | All three paged screens, navigation, links, 404 on every route |
+| Pantry editor | 10 | Autocomplete, optimistic removal and rollback, both no-match states |
+| Results list | 6 | Have/total counts, missing names, both empty states, error recovery |
+| **Frontend total** | **46** | Vitest and React Testing Library, with MSW mocking the API |
+
+**Backend tests run against real Postgres**, not an in-memory stand-in, because the matching
+query uses Postgres-specific SQL. Each test runs inside a transaction that is rolled back, so
+tests never see each other's rows. **Frontend tests never reach the network:** MSW intercepts
+every request, so component tests are fast and deterministic.
+
+**CI** (from M4) runs lint, format, type checks, tests and a Terraform validation on every
+pull request. Merges to `main` deploy automatically.
 
 ## Local setup
 
