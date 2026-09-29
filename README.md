@@ -1,4 +1,4 @@
-# Scrappy
+# Scrappy - AI Powered Recipe Generator
 
 **What can I actually make with what's in my kitchen right now?**
 
