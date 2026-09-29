@@ -3,6 +3,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.observability import install as install_observability
 from app.routers import ingredients, matches, pantry, recipes
 from app.schemas import HealthResponse
 from app.settings import get_settings
@@ -10,6 +11,9 @@ from app.settings import get_settings
 settings = get_settings()
 
 app = FastAPI(title="Scrappy API")
+
+# One JSON log line per request, and a safe body for unexpected errors (spec 10.9).
+install_observability(app)
 
 # CORS lives in exactly one place (spec 10.7): the Lambda Function URL handles it in
 # production, so enabling it here too would send duplicate headers that browsers reject.
