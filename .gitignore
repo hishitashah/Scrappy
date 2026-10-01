@@ -16,6 +16,17 @@ htmlcov/
 backend/data/cache/
 backend/import_report.csv
 
+# Terraform: local state can contain sensitive values, and .terraform/ holds
+# downloaded providers (hundreds of MB). The lock file IS committed, so everyone
+# and CI resolve the same provider versions.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+override.tf
+override.tf.json
+
 # macOS and editors
 .DS_Store
 .vscode/
