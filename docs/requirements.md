@@ -1,6 +1,6 @@
 # Scrappy — Requirements and Technical Specification
 
-**Target ship date:** Wednesday, November 11, 2026 (moved from October 28 when AI substitutions and recipe generation entered the MVP; see section 15)
+**Target ship date:** Sunday, November 22, 2026 (moved twice as scope grew: AI features, then the grocery list; see section 15)
 **Developer time:** about 10 hours/week
 
 This document is the source of truth for Scrappy's scope and design. Implement one milestone task or user story at a time. If implementation reality conflicts with this document, stop and propose a change to the document instead of silently diverging. Anything marked post-MVP is out of scope until the MVP ships.
@@ -33,7 +33,7 @@ Most recipe sites start from a recipe and send the user shopping. Scrappy invert
 | Constraint | Value |
 |---|---|
 | Budget | No fixed monthly cost after AWS credits run out, plus AI usage capped at $5/month (see section 14) |
-| Time | 10 hours/week; MVP complete by November 11, 2026 |
+| Time | 10 hours/week; MVP complete by November 22, 2026 |
 | Platform | Desktop web only — see section 4 |
 | Development machine | macOS |
 | AWS region | us-east-1 |
@@ -56,6 +56,7 @@ Most recipe sites start from a recipe and send the user shopping. Scrappy invert
 | F6 | Saved pantry | Each user's pantry is stored in the database and loads on login |
 | F7 | AI substitutions | For a recipe's missing ingredients, suggest what to use instead, preferring what's in the pantry |
 | F8 | AI recipe generation | When nothing matches, generate a recipe from the user's exact pantry and save it to their account |
+| F9 | Grocery list | Add a recipe's missing ingredients to a saved list, and open each one in the user's chosen store's search |
 
 **Engineering**
 
@@ -70,25 +71,27 @@ Most recipe sites start from a recipe and send the user shopping. Scrappy invert
 
 ### 3.2 Post-MVP backlog (in priority order)
 
-1. Favorites
-2. Ingredient hierarchy, so "chicken" matches recipes that need "chicken breast"
-3. End-to-end browser tests (Playwright)
-4. Least-privilege permissions for the CI deploy role
-5. Cook history, shopping list, dietary filters, expiry nudges, personalization
+1. Instacart integration: replace F9's search links with a shoppable recipe page (store selection and checkout), once an API key is approved
+2. Favorites
+3. Ingredient hierarchy, so "chicken" matches recipes that need "chicken breast"
+4. End-to-end browser tests (Playwright)
+5. Least-privilege permissions for the CI deploy role
+6. Cook history, dietary filters, expiry nudges, personalization
 
 Stories for these are in Appendix A. AI substitutions and AI recipe generation were promoted
 into the MVP on September 26, 2026, as F7 and F8; see sections 10.11 and 10.12.
 
 ### 3.3 Explicitly out of scope
 
-Nutrition tracking and calorie counting. Meal planning calendars. Grocery delivery integration. Social features, sharing, comments, ratings. A native or mobile-optimized experience of any kind (see section 4). Camera or photo-based ingredient entry of any kind. Quantity or unit tracking of any kind (see section 4). Multi-user households sharing one pantry. Recipe authoring by users. Calls to any third-party API at runtime other than the Anthropic API, which F7 and F8 call from the backend only (see section 4). Any infrastructure with a fixed monthly cost. A custom domain (the default CloudFront URL is used). A shared or pre-filled demo account. Assumed pantry staples other than water (see section 4).
+Nutrition tracking and calorie counting. Meal planning calendars. Grocery delivery integration. Social features, sharing, comments, ratings. A native or mobile-optimized experience of any kind (see section 4). Camera or photo-based ingredient entry of any kind. Quantity or unit tracking of any kind (see section 4). Multi-user households sharing one pantry. Recipe authoring by users. Calls to any third-party API at runtime other than the Anthropic API, which F7 and F8 call from the backend only (see section 4). Cart, checkout, delivery and price lookups at any retailer: F9 links out to a store's own search page and goes no further (see section 4). Any infrastructure with a fixed monthly cost. A custom domain (the default CloudFront URL is used). A shared or pre-filled demo account. Assumed pantry staples other than water (see section 4).
 
 ### 3.4 MVP definition of done
 
 A new visitor can open the public URL on a laptop, create an account, add and remove ingredients with autocomplete, see ranked matches with the missing ingredients named, open a recipe, and sign out and back in to find the pantry intact.
 
-They can also ask for substitutions for a recipe's missing ingredients, and generate a recipe
-from their pantry when nothing matches. Both are labeled AI-generated.
+They can also ask for substitutions for a recipe's missing ingredients, generate a recipe from
+their pantry when nothing matches (both labeled AI-generated), and add missing ingredients to a
+grocery list that links to their chosen store's search.
 
 In addition:
 - Every merge to `main` deploys automatically through CI/CD.
@@ -115,6 +118,14 @@ These are deliberate. Don't change them without updating this section.
 **Only catalog ingredients enter a pantry.** Matching works only on canonical ingredients, so an unknown item like "leftover curry" could never match anything. Accepting it would quietly mislead the user. The autocomplete shows "No match" instead, and free text that doesn't resolve to a known ingredient can't be added. A misspelling is not simply rejected: when nothing matches, the autocomplete offers the closest catalog ingredients as "Did you mean…?", which the user must confirm. Correcting a typo therefore takes one click, but nothing outside the catalog is ever stored.
 
 **Ingredient names are parsed; quantities are not stored.** If a user types "1 egg" or "a cup of rice," the input is matched against the ingredient catalog by name, and any leading quantity or unit words are discarded during matching — they are never saved or used in any calculation. The pantry only ever records which ingredients a user has, never how much. This is a deliberate simplification: quantity-aware matching would require unit conversion (cups to grams to ounces, per ingredient) to compare what a user has against what a recipe needs, which is substantial complexity for a portfolio project. The trade-off is that a user who has 1 egg and a recipe that needs 6 still shows as "having" egg. The recipe detail page always shows exact measurements, so a user finds out real quantities before cooking; the pantry's job is only to narrow down candidates, not to guarantee sufficiency.
+
+**The grocery list links out; it never integrates.** F9's store buttons are ordinary links to a retailer's search page — `walmart.com/search?q=soy+sauce`, `target.com/s?searchTerm=soy+sauce`. The browser navigates; Scrappy's server calls nothing, stores no retailer credentials, and needs no API key, approval or affiliate agreement. Anyone can open a store's search results without signing in; signing in is only needed to check out, which happens on the retailer's own site.
+
+The alternative was a real integration. Instacart's Developer Platform can turn a list of ingredients into a shoppable page with store selection and checkout, and Kroger's free API can add items straight to a Kroger cart. Both were rejected for the MVP: Instacart needs an API key and approval that may not be granted, and would add a second runtime third-party dependency; Kroger covers only its own stores and makes every user sign in through OAuth. Neither can be demonstrated reliably in an interview if the key is pending. Instacart remains the natural upgrade once the list is proven useful (section 3.2).
+
+Two consequences are accepted. Links land on a **search results page, not a product page**, because product URLs need retailer item IDs that only an API provides — for an ingredient like "tomatoes" the search results are what the user wants anyway. And Scrappy cannot add anything to a cart, so the list is a list, not an order.
+
+**The user picks their store; Scrappy never asks for location.** A one-time choice saved on the account, rather than a browser geolocation prompt. Most people shop at the same place every week, so asking once beats guessing from coordinates, and it adds no location data to protect, no permission prompt, and no region-to-chain mapping to maintain.
 
 **AI spend is capped in code, not just watched.** The Anthropic API is priced per token, which breaks the flat $0/month rule, so the budget is enforced rather than hoped for: a usage ledger records the real token counts and cost of every call, both AI endpoints return 503 once the month reaches $5, each user gets 10 substitution requests and 3 generations a day, substitution results are cached so a repeat question is free, `AI_ENABLED=false` turns both features off without a deploy, and the API key carries a $5 monthly limit set in the Anthropic Console as an independent backstop. The cap is a hard ceiling, and the expected bill at demo traffic is well under a dollar.
 
@@ -217,6 +228,17 @@ Assumed staples supplement a pantry; they never create one. A user with an empty
 - It appears in that user's later matches like any other recipe.
 - The same daily and monthly limits apply, with the same messages.
 
+### Shopping
+
+**US-20** — As a user missing a few ingredients, I want to add them to a grocery list and find them at my store, so that I can buy them on my next trip.
+- Each missing ingredient on the recipe's ingredients page has an "Add to list" button; owned ingredients have none.
+- Adding an item that is already on the list changes nothing and says so.
+- The list is saved to the account and survives signing out and back in.
+- Each item on the list has a button that opens that ingredient's search results at the user's chosen store, in a new tab.
+- The user picks their store once, from a short list of chains, and can change it at any time.
+- Items can be removed one at a time, and the whole list can be cleared.
+- Adding an ingredient to the pantry removes it from the grocery list: having it and needing it are mutually exclusive.
+
 **Definition of done for every story:**
 - Acceptance criteria are met.
 - Tests are added and passing.
@@ -236,6 +258,7 @@ Desktop-only. No mobile breakpoints, no touch-specific interactions, no phone la
 | Recipe intro | `/recipes/:id` | Back link; photo beside a forest card holding the title, category and cuisine; chevron onward to the ingredients |
 | Recipe ingredients | `/recipes/:id/ingredients` | "INGREDIENTS" heading; forest card listing every ingredient with its measurement, owned and missing visually distinct; "Suggest substitutions" for missing ingredients (F7); chevron onward |
 | Recipe steps | `/recipes/:id/steps` | "STEP BY STEP INSTRUCTIONS" heading; forest card with the numbered steps; video and source links |
+| Grocery list | `/list` | "GROCERY LIST" heading; forest card with one row per item, each with a store link and a remove ×; the store picker; "Clear list" |
 
 **The recipe flow is paged, not one long page.** Three screens, each with its own URL, following the mockups in `docs/`: a black uppercase heading on the cream field at the left, the content in a rounded forest card at the right, and a circular chevron to advance. One `GET /recipes/{id}` call serves all three pages; the data is already cached by the time the user advances, so moving between them is instant.
 
@@ -838,6 +861,67 @@ exist; an empty pantry returns 422 without calling the model; a generated recipe
 owner's matches and never in another user's; another user requesting it by id gets 404; the daily
 limit, the monthly cap and the kill switch behave as in 10.11.
 
+### 10.13 F9 — Grocery list
+
+**Behavior.** On a recipe's ingredients page, every missing ingredient carries an "Add to list"
+button. `/list` shows the saved list: one row per ingredient, each with a button that opens that
+ingredient's search at the user's chosen store in a new tab, and an × to remove it. A store
+picker sits above the list, and "Clear list" empties it.
+
+**The store catalog** lives in `frontend/src/lib/stores.ts` as a plain table of chains and URL
+templates — no API, no key, no network call from our server:
+
+| Chain | Search URL |
+|---|---|
+| Walmart | `https://www.walmart.com/search?q={query}` |
+| Target | `https://www.target.com/s?searchTerm={query}` |
+| Kroger | `https://www.kroger.com/search?query={query}` |
+| H-E-B | `https://www.heb.com/search?q={query}` |
+| Publix | `https://www.publix.com/search?query={query}` |
+| Safeway | `https://www.safeway.com/shop/search-results.html?q={query}` |
+| Whole Foods | `https://www.wholefoodsmarket.com/search?text={query}` |
+
+`{query}` is the ingredient's `display_name`, URL-encoded. Links open in a new tab with
+`rel="noreferrer"`, so the retailer learns nothing about where the user came from. Adding a chain
+is a one-line change; a chain whose URL format breaks degrades to a search page that finds
+nothing, never to a broken app.
+
+**API**
+
+- `GET /grocery-list` returns `[{ingredient_id, display_name, added_at}]`, sorted by `display_name`.
+- `POST /grocery-list/items` takes `{"ingredient_ids": [int]}` (1–50), validated exactly as
+  `POST /pantry/items` is, and returns the updated list. Ids already on the list are ignored.
+- `DELETE /grocery-list/items/{ingredient_id}` returns 204, idempotent.
+- `GET /me` and `PATCH /me` read and write `{"preferred_store": "walmart"}` — one of the chain
+  keys above, or null.
+
+**Backend**
+
+- `routers/grocery.py` and `routers/me.py`, following `routers/pantry.py` exactly: every query
+  filtered by the caller's user id.
+- Adding an ingredient to the pantry deletes it from the grocery list in the same transaction
+  (`POST /pantry/items`), so the two can never disagree.
+- `preferred_store` is validated against the chain keys, which live in `app/stores.py` and mirror
+  the frontend table. An unknown key returns 422.
+
+**Frontend**
+
+- `useGroceryList()`, `useAddGroceryItems()`, `useRemoveGroceryItem()` mirror the pantry hooks,
+  including the optimistic removal.
+- `GroceryListPage` at `/list`, reachable from the header menu.
+- The store picker is a Headless UI `Listbox` writing through `PATCH /me`.
+- With no store chosen, each row shows "Pick a store" pointing at the picker rather than a dead
+  link.
+
+**Tests**
+
+- Backend: adding a duplicate leaves one row; unknown ids return 422; delete is idempotent; one
+  user cannot read or change another's list; adding an ingredient to the pantry removes it from
+  the list; an unknown `preferred_store` returns 422.
+- Frontend: a missing ingredient shows "Add to list" and an owned one does not; the list renders
+  saved items; the store link for Walmart points at the encoded search URL; with no store chosen
+  the row shows "Pick a store"; removing an item is optimistic and rolls back on failure.
+
 ---
 
 ## 11. API reference
@@ -855,6 +939,11 @@ All endpoints except `/health` require `Authorization: Bearer <Cognito access to
 | GET | `/recipes/{id}` | — | 200 recipe detail (see 10.3) | 401, 404 |
 | POST | `/recipes/{id}/substitutions` | — | 200 `{suggestions: [{missing_ingredient, suggestion, reason, in_pantry}]}` | 401, 404, 429, 502, 503 |
 | POST | `/recipes/generate` | — | 200 recipe detail plus `generated: true` | 401, 422, 429, 502, 503 |
+| GET | `/grocery-list` | — | 200 `[{ingredient_id, display_name, added_at}]` | 401 |
+| POST | `/grocery-list/items` | `{"ingredient_ids": [int]}`, 1–50 IDs | 200 updated list | 401, 422 |
+| DELETE | `/grocery-list/items/{ingredient_id}` | — | 204 | 401 |
+| GET | `/me` | — | 200 `{preferred_store}` | 401 |
+| PATCH | `/me` | `{"preferred_store": str\|null}` | 200 `{preferred_store}` | 401, 422 |
 
 The two AI endpoints are POST because each one spends money and writes rows. `429` means the
 caller's daily limit is used up; `503` means AI is disabled or the monthly cap is reached; `502`
@@ -889,8 +978,12 @@ Tables are defined as SQLAlchemy ORM models in `models.py`, and Alembic migratio
 | | `measure` | text | E.g. "2 cups" — display only, never parsed or compared |
 | | `position` | smallint | Display order |
 | `users` | `id` | text PK | Cognito `sub`, or `shared-user` |
+| | `preferred_store` | text, nullable | A chain key from 10.13, e.g. `walmart`. Null until chosen. |
 | | `created_at` | timestamptz, default now() | |
 | `pantry_items` | `user_id` | text FK → users, cascade delete | PK with `ingredient_id` |
+| | `ingredient_id` | int FK → ingredients | |
+| | `added_at` | timestamptz, default now() | |
+| `grocery_items` | `user_id` | text FK → users, cascade delete | PK with `ingredient_id` |
 | | `ingredient_id` | int FK → ingredients | |
 | | `added_at` | timestamptz, default now() | |
 | `ai_monthly_usage` | `month` | text PK | `YYYY-MM` |
@@ -997,17 +1090,20 @@ Console spend limit above.
 | M5 | Oct 25 | F5/F6: Cognito, login wall, token verification, per-user pantries | The live app requires login; pantries are per user |
 | M6 | Nov 1 | F7 AI substitutions: SSM key, `app/ai.py`, usage ledger and limits, endpoint, panel UI | Substitutions work live, within the limits, with the ledger recording spend |
 | M7 | Nov 8 | F8 AI recipe generation: `created_by`, matching scoped to owners, endpoint, empty-state UI | A generated recipe is saved, labeled, and visible only to its owner |
-| M8 | Nov 11 | E6 README; fixes | The MVP definition of done (3.4) is met |
+| M8 | Nov 18 | F9 grocery list: `grocery_items`, `preferred_store`, endpoints, list page, store picker | A missing ingredient can be added to the list and opened at the user's store |
+| M9 | Nov 22 | E6 README; fixes | The MVP definition of done (3.4) is met |
 
-The ship date moved from October 28 to **November 11** on September 26, 2026, when AI
-substitutions and recipe generation were promoted from the post-MVP backlog into the MVP. That is
-the honest cost of the extra scope: the remaining hours before October 28 were already committed
-to M2–M5, and deployment and login are never cut to make room.
+The ship date has moved twice, both times to take on scope rather than to recover from slippage:
+October 28 to **November 11** on September 26, 2026, when AI substitutions and recipe generation
+were promoted from the backlog into the MVP; and to **November 22** on October 4, 2026, when the
+grocery list (F9) joined them. Each date reflects the hours the new work actually needs at 10
+hours a week. Deployment, login, backend tests and the README are never cut to make room.
 
 **If behind schedule**, cut in this order:
-1. AI recipe generation (F8), the larger and less essential of the two AI features
-2. Frontend component tests (keep backend tests)
-3. Visual polish
+1. The grocery list's store picker — ship the list with a single default chain
+2. AI recipe generation (F8), the larger and less essential of the two AI features
+3. Frontend component tests (keep backend tests)
+4. Visual polish
 
 Never cut deployment, login, backend tests, or the README.
 
