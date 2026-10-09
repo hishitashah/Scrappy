@@ -299,12 +299,12 @@ Generated recipes (F8) use the same three routes and layout, with an "AI-generat
 | Backend tooling | uv, ruff, pytest | Dependencies and lockfile, lint and format, tests |
 | Compute | AWS Lambda (Python 3.13, x86_64) with a Function URL | Permanent free tier |
 | Frontend hosting | Private S3 bucket + CloudFront | HTTPS static hosting; permanent free tier |
-| Database | Neon Postgres 17, free plan, AWS us-east-1 | Relational matching; RDS has no permanent free tier |
+| Database | Neon Postgres 18, free plan, AWS us-east-1 | Relational matching; RDS has no permanent free tier |
 | Auth | Amazon Cognito user pool | Free up to 10,000 monthly active users |
 | Secrets | SSM Parameter Store (standard tier) | Free |
 | Infrastructure as code | Terraform 1.11+ with AWS provider 6.x | Reproducible infrastructure |
 | CI/CD | GitHub Actions with AWS access via OIDC | No long-lived AWS keys |
-| Local development | Docker Compose (Postgres 17) | Same Postgres version everywhere |
+| Local development | Docker Compose (Postgres 18) | Same Postgres version everywhere, matching Neon |
 
 **Rejected alternatives**
 
@@ -656,7 +656,7 @@ Re-running the script must change nothing.
 ### 10.6 E2 — Testing standards
 
 **Backend**
-- pytest against real Postgres: Docker locally (a `scrappy_test` database) and a Postgres 17 service container in CI.
+- pytest against real Postgres: Docker locally (a `scrappy_test` database) and a Postgres 18 service container in CI.
 - Alembic builds the schema once per test session.
 - Each test runs in a transaction that is rolled back afterward.
 - API tests use FastAPI's `TestClient` with `app.dependency_overrides[get_current_user]`.
@@ -714,15 +714,17 @@ Re-running the script must change nothing.
 **Outputs:** site URL, API URL, bucket name, distribution ID, user pool ID, app client ID.
 
 **Neon (configured manually)**
-- One project in AWS us-east-1 on Postgres 17.
+- One project in AWS us-east-1, on whatever Postgres release Neon currently provisions — 18.6 as of October 2026. Neon offers no version choice at project creation, so **local Docker and CI follow Neon**, not the other way round, which keeps all three environments on one version. Changing it means changing `docker-compose.yml` and the CI service container together.
 - Two connection strings:
   - **Pooled** (host contains `-pooler`) for Lambda, stored in SSM.
   - **Direct** for Alembic and the import script, stored as the GitHub secret `NEON_DIRECT_URL`.
 - The Lambda-side SQLAlchemy engine uses:
   - `pool_size=1` and `max_overflow=0`
   - `pool_pre_ping=True`
-  - `connect_args={"prepare_threshold": None}` (disables server-side prepared statements behind the pooler)
+  - `connect_args={"prepare_threshold": None}` (disables server-side prepared statements behind the pooler: a later query can land on a different backend session than the one that prepared the statement)
   - `sslmode=require`
+- These live in `engine_options(url)` in `app/db.py`, selected by whether the URL points at Neon, so the choice is testable without a database.
+- Docker note: the Postgres 18 image keeps its data directory in a version-named subdirectory, so the Compose volume mounts at `/var/lib/postgresql`, not `/var/lib/postgresql/data`. The older mount makes the container exit on startup.
 
 ### 10.8 E4 — CI/CD (`.github/workflows/ci.yml`)
 
@@ -731,7 +733,7 @@ Triggered on every pull request and every push to `main`. The first three jobs r
 **backend**
 - `astral-sh/setup-uv`, then `uv sync --locked`
 - `ruff check` and `ruff format --check`
-- `alembic upgrade head` against a Postgres 17 service container
+- `alembic upgrade head` against a Postgres 18 service container
 - `pytest --cov`
 
 **frontend**

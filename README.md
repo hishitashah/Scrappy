@@ -40,7 +40,7 @@ flowchart LR
 | Auth UI | Amplify UI `Authenticator` + `aws-amplify` 6 |
 | API | Python 3.13, FastAPI, Pydantic 2, pydantic-settings, Mangum |
 | AI features | `anthropic` SDK, Claude Opus 5, backend only, with a hard $5/month spend cap |
-| Database | PostgreSQL 17, SQLAlchemy 2, psycopg 3, Alembic |
+| Database | PostgreSQL 18, SQLAlchemy 2, psycopg 3, Alembic |
 | Auth | Amazon Cognito, PyJWT |
 | Hosting | AWS Lambda, S3, CloudFront, SSM Parameter Store, CloudWatch; Neon Postgres |
 | Infrastructure | Terraform |
@@ -49,7 +49,7 @@ flowchart LR
 
 ## Testing
 
-**182 tests**, written alongside each feature rather than after it.
+**189 tests**, written alongside each feature rather than after it.
 
 | Area | Tests | What they cover |
 |---|---:|---|
@@ -62,7 +62,8 @@ flowchart LR
 | Auth | 6 | Shared mode, the `shared-user` upsert, production refusing an unauthenticated API |
 | Assumed staples | 3 | Water is the only one, and it resolves against the catalog |
 | Health and logging | 7 | `/health`, one JSON log line per request, and the safe 500 body |
-| **Backend total** | **134** | pytest against a real Postgres 17 database |
+| Configuration | 7 | DATABASE_URL vs the SSM lookup, read once per cold start, and the Neon engine options |
+| **Backend total** | **141** | pytest against a real Postgres 18 database |
 | Browser-side filtering | 16 | Quantity stripping, prefix ranking, aliases, "Did you mean…?", assumed staples |
 | Recipe pages | 14 | All three paged screens, navigation, links, 404 on every route |
 | Pantry editor | 10 | Autocomplete, optimistic removal and rollback, both no-match states |
@@ -83,7 +84,7 @@ pull request. Merges to `main` deploy automatically.
 **Prerequisites:** macOS or Linux, [Docker Desktop](https://www.docker.com/products/docker-desktop/), and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-# 1. Start local Postgres 17 on host port 5433 (creates scrappy and scrappy_test)
+# 1. Start local Postgres 18 on host port 5433 (creates scrappy and scrappy_test)
 docker compose up -d
 
 # 2. Install backend dependencies and create a local config file
