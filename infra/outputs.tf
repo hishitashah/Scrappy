@@ -12,3 +12,8 @@ output "cloudfront_distribution_id" {
   description = "Needed to invalidate the cache after a deploy."
   value       = aws_cloudfront_distribution.frontend.id
 }
+
+output "api_url" {
+  description = "Public HTTPS address of the API; the frontend's VITE_API_URL."
+  value       = aws_lambda_function_url.api.function_url
+}
