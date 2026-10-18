@@ -12,6 +12,9 @@ __pycache__/
 .coverage
 htmlcov/
 
+# Lambda deployment package, rebuilt on every deploy
+backend/build/
+
 # TheMealDB download cache and import output (not redistributed, spec section 9)
 backend/data/cache/
 backend/import_report.csv

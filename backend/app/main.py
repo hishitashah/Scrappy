@@ -2,6 +2,7 @@
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from mangum import Mangum
 
 from app.observability import install as install_observability
 from app.routers import ingredients, matches, pantry, recipes
@@ -35,3 +36,8 @@ app.include_router(recipes.router)
 def health() -> HealthResponse:
     """Liveness check. Never touches the database, so it doesn't wake Neon (spec 10.9)."""
     return HealthResponse(status="ok", version=get_settings().app_version)
+
+
+# Lambda's entry point. Mangum translates the Lambda event into an ASGI request, so the
+# same `app` serves uvicorn locally and Lambda in production, unchanged.
+handler = Mangum(app)

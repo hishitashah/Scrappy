@@ -342,7 +342,7 @@ Deploys:      GitHub Actions → AWS (via OIDC) and → Neon (migrations)
 3. Lambda invokes Mangum, which hands the request to FastAPI.
 4. FastAPI verifies the token, validates the input, queries Postgres, and returns JSON.
 
-**Latency.** Warm requests should take well under one second. A cold Lambda plus a suspended Neon compute can reach about one to two seconds, so every data view needs a loading state.
+**Latency.** Measured on October 17, 2026, after the first deploy: warm requests **0.17s**; a cold Lambda against a fully suspended Neon **5.5s**, worse than the one-to-two seconds first estimated here. Every data view therefore needs a loading state, and a demo is worth warming up with a page load a minute beforehand.
 
 ---
 
@@ -692,12 +692,13 @@ Re-running the script must change nothing.
   - handler `app.main.handler`
   - 512 MB memory, 10-second timeout
   - code from the zip that CI builds, with `source_code_hash`
-  - environment variables: `ENV`, `APP_VERSION`, `AUTH_MODE`, `DATABASE_URL_PARAM`, `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID`, and, from M6, `ANTHROPIC_API_KEY_PARAM`, `AI_ENABLED`, `AI_MODEL`, `AI_MONTHLY_BUDGET_CENTS`, `AI_DAILY_SUBSTITUTIONS_PER_USER`, `AI_DAILY_GENERATIONS_PER_USER`
+  - environment variables: `ENV`, `APP_VERSION`, `AUTH_MODE`, `ALLOW_SHARED_MODE` (required while `AUTH_MODE=shared`, or settings validation refuses to start and every request 500s — removed at M5), `DATABASE_URL_PARAM`, `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID`, and, from M6, `ANTHROPIC_API_KEY_PARAM`, `AI_ENABLED`, `AI_MODEL`, `AI_MONTHLY_BUDGET_CENTS`, `AI_DAILY_SUBSTITUTIONS_PER_USER`, `AI_DAILY_GENERATIONS_PER_USER`
 - **Function URL:**
   - auth type `NONE`, because the app verifies Cognito tokens itself
   - CORS origins: the CloudFront domain and `http://localhost:5173`
   - methods GET, POST, DELETE; headers `authorization` and `content-type`; max age 3600
-- **Function resource policy:** it must grant both `lambda:InvokeFunctionUrl` and `lambda:InvokeFunction` to `*`, conditioned on `lambda:FunctionUrlAuthType = NONE` and `lambda:InvokedViaFunctionUrl = true`. Function URLs created since October 2025 require both actions; missing the second causes 403 Forbidden.
+- **Function resource policy:** one grant of `lambda:InvokeFunctionUrl` to `*`, conditioned on `lambda:FunctionUrlAuthType = NONE`. The condition is what keeps the grant narrow: it permits calls arriving through the Function URL and not `lambda:Invoke` from the API or CLI.
+  - An earlier draft of this section called for a second grant of `lambda:InvokeFunction` as well. That is wrong: AWS rejects it with `InvalidParameterValueException: FunctionUrlAuthType is only supported for lambda:InvokeFunctionUrl`. Verified on October 17, 2026 — `/health` returns 200 with the single grant.
 - **CORS lives in one place.** In production the Function URL handles CORS. FastAPI's `CORSMiddleware` is enabled only when `ENV=local`, because enabling both produces duplicate headers that browsers reject.
 - **CloudWatch log group:** `/aws/lambda/scrappy-api` with 14-day retention. Create it in Terraform before the first invocation; otherwise Lambda creates one that keeps logs forever.
 - **SSM parameters:** `/scrappy/prod/database_url` and, from M6, `/scrappy/prod/anthropic_api_key`, both SecureStrings.
@@ -752,9 +753,10 @@ Runs only on pushes to `main`, after all three jobs pass. It uses `concurrency: 
 1. `aws-actions/configure-aws-credentials` assumes the deploy role through OIDC (role ARN in the repository variable `AWS_DEPLOY_ROLE_ARN`).
 2. **Build the Lambda package:**
    - `uv export --no-dev --no-hashes --format requirements-txt`, then `uv pip install --target build/package --python-platform x86_64-manylinux_2_28 --python-version 3.13 --only-binary :all: -r requirements.txt`.
-   - Copy `app/` in and zip.
-   - This builds a Linux package from any OS; verified, about 18 MB zipped.
+   - Copy `app/` in and zip. `backend/scripts/build_lambda.sh` holds these steps, and CI runs that same script so the local and deployed packages cannot drift.
+   - This builds a Linux package from any OS; verified, 13 MB zipped.
    - Don't bundle boto3; the Lambda runtime provides it.
+   - Strip `__pycache__`, but **keep `*.dist-info`**. psycopg reads its own version through `importlib.metadata.version("psycopg")`; without that metadata it reports `0.0.0.0` and SQLAlchemy refuses to start with "psycopg version 3.0.2 or higher is required". The failure appears only at runtime on Lambda, never locally.
 3. **Migrate:** `alembic upgrade head` against `NEON_DIRECT_URL`. Migrations run before new code goes live, so they must be backward-compatible (add columns; never rename or drop them in the same deploy).
 4. **Apply infrastructure:** `terraform init` and `terraform apply -auto-approve`. This also deploys the new Lambda code.
 5. **Smoke test:** `curl --fail "$API_URL/health"`, and check that `version` equals the commit SHA.
