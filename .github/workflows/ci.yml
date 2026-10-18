@@ -1,0 +1,122 @@
+# Checks that run on every pull request and every push to main (spec 10.8).
+#
+# The three jobs run in parallel and need no AWS credentials. Deploying is a separate job,
+# added in m4/ci-deploy, which runs only after all three pass.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  backend:
+    name: backend
+    runs-on: ubuntu-latest
+
+    # Tests run against real Postgres, not an in-memory stand-in: the matching query uses
+    # Postgres-specific SQL (count(*) FILTER, array_agg, ANY) that SQLite would fake badly.
+    # The version matches Neon and local Docker.
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: scrappy
+          POSTGRES_PASSWORD: scrappy
+          POSTGRES_DB: scrappy_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U scrappy -d scrappy_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 15
+
+    env:
+      # tests/conftest.py reads this; locally it defaults to port 5433.
+      TEST_DATABASE_URL: postgresql+psycopg://scrappy:scrappy@localhost:5432/scrappy_test
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # --locked fails if uv.lock is out of step with pyproject.toml, which catches a
+      # dependency added without committing the lock file.
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Format check
+        run: uv run ruff format --check .
+
+      - name: Tests
+        run: uv run pytest --cov
+
+  frontend:
+    name: frontend
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # npm ci installs straight from the lock file, so it needs none of the peer-resolution
+      # workarounds a local npm install does.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Tests
+        run: npm test -- --run
+
+      - name: Build
+        run: npm run build
+
+  infra:
+    name: infra
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Format check
+        run: terraform fmt -check -recursive
+
+      # -backend=false skips the S3 backend, so this job needs no AWS credentials at all:
+      # a pull request from any fork can be validated without touching the account.
+      - name: Validate infra
+        run: |
+          terraform -chdir=infra init -backend=false
+          terraform -chdir=infra validate
+
+      - name: Validate bootstrap
+        run: |
+          terraform -chdir=infra/bootstrap init -backend=false
+          terraform -chdir=infra/bootstrap validate
