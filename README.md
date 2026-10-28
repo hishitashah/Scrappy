@@ -1,5 +1,7 @@
 # Scrappy - AI Powered Recipe Generator
 
+[![CI](https://github.com/hishitashah/Scrappy/actions/workflows/ci.yml/badge.svg)](https://github.com/hishitashah/Scrappy/actions/workflows/ci.yml)
+
 **What can I actually make with what's in my kitchen right now?**
 
 Scrappy is a desktop web app that ranks recipes by how many of their ingredients you already have. You type in your pantry, and every result tells you exactly what's missing: *"You have 3 of 7 — missing oil, salt, soy sauce, spring onion."*
@@ -76,8 +78,19 @@ query uses Postgres-specific SQL. Each test runs inside a transaction that is ro
 tests never see each other's rows. **Frontend tests never reach the network:** MSW intercepts
 every request, so component tests are fast and deterministic.
 
-**CI** (from M4) runs lint, format, type checks, tests and a Terraform validation on every
-pull request. Merges to `main` deploy automatically.
+**CI** runs on every pull request and every push to `main`, in three parallel jobs:
+
+| Job | Runs |
+|---|---|
+| **backend** | `ruff check`, `ruff format --check`, and `pytest --cov` against a Postgres 18 service container |
+| **frontend** | `npm run lint`, `npm run typecheck`, `npm test`, `npm run build` |
+| **infra** | `terraform fmt -check -recursive`, `init -backend=false`, `validate` |
+
+`main` is protected: a pull request cannot merge until all three pass. The infra job needs no
+AWS credentials, because `-backend=false` skips the remote state entirely.
+
+Backend coverage is currently **92%**, reported but not enforced — a number to watch, not a
+threshold to game.
 
 ## Local setup
 

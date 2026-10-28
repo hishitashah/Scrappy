@@ -19,6 +19,7 @@ dependencies = [
 dev = [
     "boto3>=1.43.110",
     "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
     "ruff>=0.16.8",
 ]
 
@@ -35,3 +36,8 @@ select = ["E", "W", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.coverage.run]
+# Measure our code, not the virtualenv. No threshold is enforced (spec 10.6): the number
+# is there to be looked at, not to be gamed.
+source = ["app", "scripts"]
