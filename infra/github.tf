@@ -3,16 +3,21 @@
 # credentials that expire in minutes.
 
 # AWS has validated GitHub's certificate against its own trust store since July 2023, so no
-# thumbprint is pinned here — one less thing to rotate when GitHub changes certificates.
+# thumbprint is pinned here. The field is left unset rather than empty on purpose: AWS fills
+# one in itself, and an explicit [] makes Terraform try to clear it on every apply.
 resource "aws_iam_openid_connect_provider" "github" {
-  url             = "https://token.actions.githubusercontent.com"
-  client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = []
+  url            = "https://token.actions.githubusercontent.com"
+  client_id_list = ["sts.amazonaws.com"]
 }
 
 data "aws_iam_policy_document" "github_deploy_assume_role" {
   statement {
-    actions = ["sts:AssumeRoleWithWebIdentity"]
+    # TagSession is required as well as the assume itself: configure-aws-credentials
+    # attaches session tags (repo, workflow, actor, branch) by default, and STS refuses the
+    # whole call without this action — reporting it, confusingly, as "Not authorized to
+    # perform sts:AssumeRoleWithWebIdentity". The tags are worth keeping: they identify in
+    # CloudTrail which workflow run made each change.
+    actions = ["sts:AssumeRoleWithWebIdentity", "sts:TagSession"]
 
     principals {
       type        = "Federated"
@@ -28,12 +33,20 @@ data "aws_iam_policy_document" "github_deploy_assume_role" {
     # The security model in one line: only a workflow running on main, in this repository,
     # can assume this role. A pull request — including one from a fork — gets nothing.
     #
-    # The repository name is case-sensitive here. It is "Scrappy", not "scrappy": IAM
-    # compares the claim literally, and the wrong case fails as an opaque AccessDenied.
+    # Both forms of the subject claim are listed because GitHub sends the second one here.
+    # The documented format is `repo:OWNER/REPO:ref:...`, but this repository receives the
+    # newer immutable-identifier format, `repo:OWNER@ownerID/REPO@repoID:ref:...` — verified
+    # in CloudTrail on October 28, 2026, after the documented form failed with an opaque
+    # AccessDenied. Listing both means the role keeps working whichever GitHub sends.
+    #
+    # Case matters too: the repository is "Scrappy", not "scrappy". IAM compares literally.
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:hishitashah/Scrappy:ref:refs/heads/main"]
+      values = [
+        "repo:hishitashah/Scrappy:ref:refs/heads/main",
+        "repo:hishitashah@149904682/Scrappy@1376527431:ref:refs/heads/main",
+      ]
     }
   }
 }
