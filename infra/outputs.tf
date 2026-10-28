@@ -17,3 +17,8 @@ output "api_url" {
   description = "Public HTTPS address of the API; the frontend's VITE_API_URL."
   value       = aws_lambda_function_url.api.function_url
 }
+
+output "deploy_role_arn" {
+  description = "Set this as the AWS_DEPLOY_ROLE_ARN repository variable in GitHub."
+  value       = aws_iam_role.github_deploy.arn
+}
