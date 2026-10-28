@@ -91,7 +91,12 @@ resource "aws_lambda_function" "api" {
 
   filename = local.lambda_zip
   # Redeploys only when the package actually changes.
-  source_code_hash = filebase64sha256(local.lambda_zip)
+  #
+  # fileexists() guards the hash because `terraform validate` evaluates this expression,
+  # and the zip is a build artifact that git ignores. Without the guard, CI's infra job
+  # fails on a clean checkout with "no such file or directory" — validate has no package
+  # to hash, and needs none. At apply time the file is always there, built first.
+  source_code_hash = fileexists(local.lambda_zip) ? filebase64sha256(local.lambda_zip) : null
 
   environment {
     variables = {
