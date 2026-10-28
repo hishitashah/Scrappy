@@ -708,8 +708,12 @@ Re-running the script must change nothing.
 - **Lambda role:** `AWSLambdaBasicExecutionRole` plus `ssm:GetParameter` on those parameters only.
 
 **GitHub access (`github.tf`)**
-- An OIDC provider for `token.actions.githubusercontent.com` with audience `sts.amazonaws.com`.
-- A deploy role whose trust policy requires `sub = repo:<owner>/scrappy:ref:refs/heads/main`, so pull requests get no AWS access.
+- An OIDC provider for `token.actions.githubusercontent.com` with audience `sts.amazonaws.com`. Leave `thumbprint_list` unset: AWS has validated GitHub's certificate against its own trust store since July 2023 and fills a value in itself, so setting `[]` makes Terraform try to clear it on every apply.
+- A deploy role trusting that provider, so pull requests get no AWS access. Two details of the trust policy are not what the AWS or GitHub documentation leads you to expect, and both were found the hard way on October 28, 2026:
+  - **The trust policy must allow `sts:TagSession` as well as `sts:AssumeRoleWithWebIdentity`.** `aws-actions/configure-aws-credentials` attaches session tags (repo, workflow, actor, branch) by default, and STS rejects the entire call without that action — while reporting the failure as `Not authorized to perform sts:AssumeRoleWithWebIdentity`, naming the action that *was* allowed. The tags are worth keeping: they identify in CloudTrail which workflow run made each change.
+  - **The `sub` claim uses GitHub's immutable-identifier format**, `repo:OWNER@ownerID/REPO@repoID:ref:refs/heads/main` — for this repository, `repo:hishitashah@149904682/Scrappy@1376527431:ref:refs/heads/main` — not the documented `repo:OWNER/REPO:ref:...`. The policy lists both strings so it works whichever GitHub sends. The immutable form is the better one: it survives a rename, and nobody who later claims the name `hishitashah/Scrappy` inherits this access.
+  - The repository name is also case-sensitive: `Scrappy`, not `scrappy`.
+- **Debugging an OIDC AccessDenied:** read the event rather than re-reading the policy. `aws cloudtrail lookup-events --lookup-attributes AttributeKey=EventName,AttributeValue=AssumeRoleWithWebIdentity` shows each failed attempt with the exact `sub` that was presented, in `userIdentity.principalId`. Three rounds of plausible guesses found nothing here; one lookup gave the answer immediately.
 - For the MVP, the role has `AdministratorAccess`, constrained by that trust policy. Least privilege is a post-MVP item.
 
 **Outputs:** site URL, API URL, bucket name, distribution ID, user pool ID, app client ID.
