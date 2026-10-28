@@ -89,6 +89,18 @@ every request, so component tests are fast and deterministic.
 `main` is protected: a pull request cannot merge until all three pass. The infra job needs no
 AWS credentials, because `-backend=false` skips the remote state entirely.
 
+**Merging to `main` deploys**, in a fourth job that runs only after those three pass:
+
+1. Assume an AWS role through GitHub's OIDC provider — **no AWS keys are stored in GitHub**,
+   and the trust policy only accepts workflows running on `main` in this repository.
+2. Build the Lambda package with the same script used locally.
+3. Run database migrations against Neon, before the new code goes live.
+4. `terraform apply`, which ships the new Lambda code along with any infrastructure change.
+5. Smoke-test `/health` and assert the reported version equals the deployed commit — this is
+   what catches "the deploy succeeded but the old code is still serving".
+6. Upload the frontend: hashed assets first with a one-year cache, then `index.html` with
+   `no-cache`, then invalidate CloudFront.
+
 Backend coverage is currently **92%**, reported but not enforced — a number to watch, not a
 threshold to game.
 

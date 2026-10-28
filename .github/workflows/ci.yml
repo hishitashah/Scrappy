@@ -120,3 +120,107 @@ jobs:
         run: |
           terraform -chdir=infra/bootstrap init -backend=false
           terraform -chdir=infra/bootstrap validate
+
+  # Deploys on merges to main, after all three checks pass (spec 10.8).
+  deploy:
+    name: deploy
+    needs: [backend, frontend, infra]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    # Two merges in quick succession queue rather than race. Cancelling midway through a
+    # terraform apply can leave the state locked and the infrastructure half-updated, so
+    # in-progress deploys are never cancelled.
+    concurrency:
+      group: deploy-prod
+      cancel-in-progress: false
+
+    permissions:
+      id-token: write # required to request the OIDC token
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      # No AWS keys are stored in GitHub: this trades the run's OIDC token for credentials
+      # that expire in minutes, and only works from main in this repository.
+      - name: Assume the deploy role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+
+      # The same script used locally, so the package that was tested and the one that ships
+      # are built identically.
+      - name: Build the Lambda package
+        run: ./scripts/build_lambda.sh
+        working-directory: backend
+
+      # Before the new code goes live, which is why migrations must be backward-compatible:
+      # for a moment, the old code is running against the new schema.
+      - name: Migrate the database
+        run: uv run alembic upgrade head
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.NEON_DIRECT_URL }}
+
+      - name: Apply infrastructure
+        run: |
+          terraform -chdir=infra init -input=false
+          terraform -chdir=infra apply -auto-approve -input=false \
+            -var "app_version=${{ github.sha }}"
+
+      # Proves the new code is actually serving, not just that the deploy reported success:
+      # /health echoes APP_VERSION, which Terraform set to this commit.
+      - name: Smoke test
+        run: |
+          API_URL=$(terraform -chdir=infra output -raw api_url)
+          # Steps do not share shell variables; GITHUB_ENV passes it to later steps.
+          echo "API_URL=$API_URL" >> "$GITHUB_ENV"
+          echo "API: $API_URL"
+
+          version=$(curl --fail --silent --retry 5 --retry-delay 3 --retry-all-errors \
+            "${API_URL}health" | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')
+
+          if [ "$version" != "${{ github.sha }}" ]; then
+            echo "::error::/health reports '$version', expected '${{ github.sha }}' — the old code is still serving"
+            exit 1
+          fi
+          echo "live version matches this commit"
+
+      - name: Build the frontend
+        run: npm ci && npm run build
+        working-directory: frontend
+        env:
+          VITE_API_URL: ${{ env.API_URL }}
+
+      # Order matters: hashed assets first, so index.html never points at files that have
+      # not finished uploading. The assets are immutable (their names change when their
+      # contents do); index.html must never be cached, or visitors keep the old one.
+      - name: Upload the frontend
+        run: |
+          BUCKET=$(terraform -chdir=infra output -raw frontend_bucket)
+          DISTRIBUTION=$(terraform -chdir=infra output -raw cloudfront_distribution_id)
+
+          aws s3 sync frontend/dist/ "s3://$BUCKET/" --delete \
+            --exclude index.html \
+            --cache-control "public, max-age=31536000, immutable"
+
+          aws s3 cp frontend/dist/index.html "s3://$BUCKET/index.html" \
+            --cache-control "no-cache"
+
+          aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION" --paths "/index.html"
