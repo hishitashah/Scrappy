@@ -27,10 +27,24 @@ class Settings(BaseSettings):
     # therefore never appears in Terraform state, a Lambda environment variable, or git.
     database_url_param: str | None = None
 
-    # "shared" treats every caller as one fixed user; "cognito" verifies a real token (M5).
+    # "shared" treats every caller as one fixed user; "cognito" verifies a real token.
     auth_mode: Literal["shared", "cognito"] = "shared"
     # Deliberate escape hatch for the live site between M4 and M5. Removed when login ships.
     allow_shared_mode: bool = False
+
+    # Set by Terraform from the Cognito outputs; required once AUTH_MODE=cognito.
+    cognito_user_pool_id: str | None = None
+    cognito_client_id: str | None = None
+
+    @property
+    def cognito_issuer(self) -> str:
+        """The `iss` claim every token from this pool carries."""
+        return f"https://cognito-idp.{AWS_REGION}.amazonaws.com/{self.cognito_user_pool_id}"
+
+    @property
+    def cognito_jwks_url(self) -> str:
+        """Where Cognito publishes the public keys that verify its signatures."""
+        return f"{self.cognito_issuer}/.well-known/jwks.json"
 
     @model_validator(mode="after")
     def refuse_shared_mode_in_production(self) -> Self:
@@ -39,6 +53,17 @@ class Settings(BaseSettings):
             raise ValueError(
                 "AUTH_MODE=shared is not allowed when ENV=prod; "
                 "set ALLOW_SHARED_MODE=true to override before login ships."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def require_cognito_settings(self) -> Self:
+        """Catch a half-configured pool at startup, not on the first request."""
+        if self.auth_mode == "cognito" and not (
+            self.cognito_user_pool_id and self.cognito_client_id
+        ):
+            raise ValueError(
+                "AUTH_MODE=cognito requires COGNITO_USER_POOL_ID and COGNITO_CLIENT_ID"
             )
         return self
 
