@@ -5,6 +5,7 @@ import { useParams } from 'react-router'
 import { useRecipe } from '../api/hooks'
 import type { RecipeIngredient } from '../api/types'
 import { RecipePageFrame } from '../components/RecipePageFrame'
+import { SubstitutionsPanel } from '../components/SubstitutionsPanel'
 
 export function RecipeIngredientsPage() {
   const { id } = useParams()
@@ -33,6 +34,9 @@ export function RecipeIngredientsPage() {
                 <IngredientRow key={ingredient.id} ingredient={ingredient} />
               ))}
             </ul>
+            {/* Shows itself only when something is missing, and asks for nothing until
+                the button is pressed (F7, spec 10.11). */}
+            <SubstitutionsPanel recipe={recipe} />
           </>
         )
       }}

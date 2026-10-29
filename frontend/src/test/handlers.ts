@@ -1,6 +1,12 @@
 import { HttpResponse, http } from 'msw'
 
-import type { Ingredient, Match, PantryItem, RecipeDetail } from '../api/types'
+import type {
+  Ingredient,
+  Match,
+  PantryItem,
+  RecipeDetail,
+  SubstitutionsResponse,
+} from '../api/types'
 
 const API = 'http://localhost:8000'
 
@@ -82,6 +88,32 @@ export function resetRecipe(next: RecipeDetail | null = recipe()) {
   recipeDetail = next
 }
 
+/**
+ * Substitutions for the fixture recipe's two missing ingredients (Olive Oil, Salt), one of
+ * which the cook already has — so both row styles are exercised.
+ */
+export function substitutions(
+  overrides: Partial<SubstitutionsResponse> = {},
+): SubstitutionsResponse {
+  return {
+    suggestions: [
+      {
+        missing_ingredient: 'Olive Oil',
+        suggestion: 'Butter',
+        reason: 'Both carry heat and add richness.',
+        in_pantry: false,
+      },
+      {
+        missing_ingredient: 'Salt',
+        suggestion: 'Garlic',
+        reason: 'Seasons the dish without the salt.',
+        in_pantry: true,
+      },
+    ],
+    ...overrides,
+  }
+}
+
 export const handlers = [
   http.get(`${API}/ingredients`, () => HttpResponse.json(catalog)),
   http.get(`${API}/pantry`, () => HttpResponse.json(pantry)),
@@ -103,4 +135,7 @@ export const handlers = [
       ? HttpResponse.json(recipeDetail)
       : HttpResponse.json({ detail: 'Recipe not found' }, { status: 404 }),
   ),
+  // Tests that care about the AI call override this; it exists so that an accidental
+  // request fails a test loudly rather than tripping MSW's unhandled-request error.
+  http.post(`${API}/recipes/:id/substitutions`, () => HttpResponse.json(substitutions())),
 ]

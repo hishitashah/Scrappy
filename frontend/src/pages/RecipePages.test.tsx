@@ -74,6 +74,14 @@ describe('recipe ingredients page', () => {
     expect(screen.getByText('You have 4 of 6')).toBeInTheDocument()
   })
 
+  it('offers substitutions here, and only here', async () => {
+    // The panel's own behaviour has its own tests; this one just proves it is mounted on
+    // the page that shows the gaps, and not on the others.
+    await ingredients()
+
+    expect(screen.getByRole('button', { name: 'Suggest substitutions' })).toBeInTheDocument()
+  })
+
   it('marks missing ingredients distinctly from owned ones', async () => {
     await ingredients()
 
@@ -96,6 +104,12 @@ describe('recipe ingredients page', () => {
 })
 
 describe('recipe steps page', () => {
+  it('does not offer substitutions', async () => {
+    await steps()
+
+    expect(screen.queryByRole('button', { name: 'Suggest substitutions' })).not.toBeInTheDocument()
+  })
+
   it('shows the numbered steps in order', async () => {
     await steps()
 

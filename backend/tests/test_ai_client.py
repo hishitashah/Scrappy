@@ -35,6 +35,8 @@ class StubMessages:
 
     def parse(self, **kwargs: object) -> object:
         self.kwargs = kwargs
+        if isinstance(self.response, Exception):
+            raise self.response
         return self.response
 
 
@@ -144,3 +146,29 @@ def test_there_is_no_client_without_a_key(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr("app.ai.get_settings", lambda: settings())
 
     assert get_substitution_client() is None
+
+
+def test_an_sdk_failure_becomes_an_unusable_answer_with_no_spend() -> None:
+    """A rejected key, a rate limit or a timeout is not a 500.
+
+    These raise rather than returning a response, so without catching them the request
+    reaches the generic error handler and the browser is told "Internal error" — which
+    reads as a Scrappy bug when the truth is that the model is unreachable. The honest
+    answer is 502, which the panel already knows how to explain.
+    """
+    import httpx2
+    from anthropic import AuthenticationError
+
+    rejected = AuthenticationError(
+        message="invalid x-api-key",
+        response=httpx2.Response(401, request=httpx2.Request("POST", "https://api.anthropic.com")),
+        body=None,
+    )
+
+    with pytest.raises(AiUnavailable) as raised:
+        AnthropicSubstitutions(stub_client(rejected), settings()).suggest(
+            recipe_title="Egg fried rice", missing=["Oil"], pantry=[]
+        )
+
+    # Nothing was billed, so nothing is recorded: the ledger never invents spend.
+    assert (raised.value.input_tokens, raised.value.output_tokens) == (0, 0)
