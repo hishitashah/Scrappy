@@ -23,6 +23,25 @@ resource "aws_ssm_parameter" "database_url" {
   }
 }
 
+# The Anthropic API key, for F7 and F8 (spec 13). Same pattern as the database URL: a
+# placeholder here, the real key written once by hand, and the value ignored forever after.
+#
+#   aws ssm put-parameter --name /scrappy/prod/anthropic_api_key --type SecureString \
+#     --value 'sk-ant-...' --overwrite
+#
+# The key is not the only guardrail on spend: it also carries a $5 monthly limit set in the
+# Anthropic Console, which holds even if Scrappy's own accounting has a bug (spec 14).
+resource "aws_ssm_parameter" "anthropic_api_key" {
+  name        = "/scrappy/prod/anthropic_api_key"
+  description = "Anthropic API key for Scrappy's AI features"
+  type        = "SecureString"
+  value       = "placeholder"
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
 variable "app_version" {
   description = "Value served by /health. CI passes the commit SHA; locally it is just a label."
   type        = string
@@ -65,11 +84,15 @@ resource "aws_iam_role_policy_attachment" "lambda_logs" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-# Reading the database URL — that one parameter, not every parameter in the account.
+# Reading its own two secrets — those parameters by name, not every parameter in the
+# account, and not a /scrappy/prod/* wildcard that a future parameter would silently join.
 data "aws_iam_policy_document" "lambda_ssm" {
   statement {
-    actions   = ["ssm:GetParameter"]
-    resources = [aws_ssm_parameter.database_url.arn]
+    actions = ["ssm:GetParameter"]
+    resources = [
+      aws_ssm_parameter.database_url.arn,
+      aws_ssm_parameter.anthropic_api_key.arn,
+    ]
   }
 }
 
@@ -87,7 +110,10 @@ resource "aws_lambda_function" "api" {
   architectures = ["x86_64"]
   handler       = "app.main.handler"
   memory_size   = 512
-  timeout       = 10
+  # 30 rather than 10 because an AI call (F7, F8) can take longer than ten seconds. The
+  # ceiling itself costs nothing: Lambda bills per GB-second actually used, so a request
+  # that finishes in 200 ms is charged for 200 ms.
+  timeout = 30
 
   filename = local.lambda_zip
   # Redeploys only when the package actually changes.
@@ -110,6 +136,17 @@ resource "aws_lambda_function" "api" {
       AUTH_MODE            = "cognito"
       COGNITO_USER_POOL_ID = aws_cognito_user_pool.users.id
       COGNITO_CLIENT_ID    = aws_cognito_user_pool_client.web.id
+
+      # AI features (F7, F8). AI_ENABLED is the kill switch (spec 14, guardrail 5):
+      # flipping it in the console disables both features without a deploy. It ships
+      # "false" in this branch, so the endpoint exists and answers 503 until the key is in
+      # SSM and the panel is built.
+      ANTHROPIC_API_KEY_PARAM         = aws_ssm_parameter.anthropic_api_key.name
+      AI_ENABLED                      = "false"
+      AI_MODEL                        = "claude-opus-5-5"
+      AI_MONTHLY_BUDGET_CENTS         = "500"
+      AI_DAILY_SUBSTITUTIONS_PER_USER = "10"
+      AI_DAILY_GENERATIONS_PER_USER   = "3"
     }
   }
 

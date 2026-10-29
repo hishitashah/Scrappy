@@ -74,3 +74,23 @@ class RecipeDetailResponse(BaseModel):
     source_url: str | None
     steps: list[str]
     ingredients: list[RecipeIngredientResponse]
+
+
+class SubstitutionResponse(BaseModel):
+    """One AI substitution (spec 10.11).
+
+    `in_pantry` is computed by the API, not asked of the model: whether the user owns the
+    suggested ingredient is a fact to be counted, not a judgment (spec section 4).
+    """
+
+    missing_ingredient: str
+    suggestion: str
+    reason: str
+    in_pantry: bool
+
+
+class SubstitutionsResponse(BaseModel):
+    """Wrapped in an object rather than returned as a bare list, so that fields can be
+    added later (a cache flag, a model name) without breaking the client."""
+
+    suggestions: list[SubstitutionResponse]

@@ -295,7 +295,7 @@ Generated recipes (F8) use the same three routes and layout, with an "AI-generat
 | Settings | pydantic-settings | Typed configuration from environment variables |
 | Token verification | PyJWT (`PyJWKClient`) | Verifies Cognito access tokens inside FastAPI |
 | Normalization | `inflect` + a synonym list | Singular/plural handling for ingredient names |
-| AI features | `anthropic` SDK, model `claude-opus-5` | Substitutions (F7) and recipe generation (F8), backend only, with structured outputs |
+| AI features | `anthropic` SDK, model `claude-opus-5-5` | Substitutions (F7) and recipe generation (F8), backend only, with structured outputs |
 | Lambda adapter | Mangum | Runs the FastAPI app on Lambda |
 | Backend tooling | uv, ruff, pytest | Dependencies and lockfile, lint and format, tests |
 | Compute | AWS Lambda (Python 3.13, x86_64) with a Function URL | Permanent free tier |
@@ -690,7 +690,8 @@ Re-running the script must change nothing.
 - **Lambda:**
   - `python3.13`, `x86_64`
   - handler `app.main.handler`
-  - 512 MB memory, 10-second timeout
+  - 512 MB memory, 30-second timeout (an AI call can exceed 10 seconds, and the
+    ceiling costs nothing: Lambda bills per GB-second actually used)
   - code from the zip that CI builds, with `source_code_hash`
   - environment variables: `ENV`, `APP_VERSION`, `AUTH_MODE`, `ALLOW_SHARED_MODE` (required while `AUTH_MODE=shared`, or settings validation refuses to start and every request 500s — removed at M5), `DATABASE_URL_PARAM`, `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID`, and, from M6, `ANTHROPIC_API_KEY_PARAM`, `AI_ENABLED`, `AI_MODEL`, `AI_MONTHLY_BUDGET_CENTS`, `AI_DAILY_SUBSTITUTIONS_PER_USER`, `AI_DAILY_GENERATIONS_PER_USER`
 - **Function URL:**
@@ -810,15 +811,29 @@ suggestions already in the pantry marked. Nothing is requested until the button 
 - `POST /recipes/{id}/substitutions` loads the recipe, computes the missing ingredients against
   the caller's pantry, and returns `{"suggestions": [{missing_ingredient, suggestion, reason, in_pantry}]}`.
 - A recipe with nothing missing returns `{"suggestions": []}` without calling Anthropic.
-- **Cache first.** The key is `(recipe_id, pantry_hash)`, where `pantry_hash` is a SHA-256 of the
-  caller's sorted pantry ingredient ids. A hit returns the stored payload and costs nothing.
-- **Guardrails, checked in this order, before any spend:** `AI_ENABLED` (503), the monthly cap
-  (503), the caller's daily count (429).
-- The call itself: `claude-opus-5`, structured outputs against the response model,
-  `output_config: {"effort": "low"}`, no streaming, `max_tokens` 1024.
+- **Checked in this order:** `AI_ENABLED` (503), then the cache, then the monthly cap (503),
+  then the caller's daily count (429). The kill switch comes first because an operator pause
+  means paused. The cache comes before the two spend limits because a cached answer costs
+  nothing, so neither a used-up daily allowance nor a reached monthly cap should withhold it.
+- **The cache.** The key is `(recipe_id, pantry_hash)`, where `pantry_hash` is a SHA-256 of the
+  caller's sorted pantry ingredient ids. A hit returns the stored payload, spends nothing, and
+  counts nothing against the daily limit. The key does not include the prompt, so a later
+  change to the prompt is followed by `DELETE FROM substitution_cache`.
+- The call itself: `claude-opus-5-5`, structured outputs against the response model,
+  `output_config: {"effort": "low"}`, no streaming, `max_tokens` 4096. Thinking cannot be
+  disabled on this model and its tokens count toward `max_tokens`, so a 1024 ceiling would
+  risk truncating the answer; `effort: "low"` is what keeps the spend down instead.
+- Three responses are rejected as `502`, because a half-answer is worse than none: one that
+  fails the schema, one that stops with `refusal`, and one that stops at `max_tokens`. All
+  three are still written to `ai_monthly_usage`, since the tokens were billed either way: a
+  ledger that counted only the answers we kept would leave the monthly cap reading low.
 - The prompt states the recipe title, the missing ingredients, and the pantry, and asks for one
   substitution per missing ingredient, preferring pantry items, with a reason of at most 15 words,
   and permission to return nothing for an ingredient with no sensible substitute.
+- The model is asked only for the judgment — what could stand in for this — and never for a
+  fact. `in_pantry` is computed here by normalizing each suggestion through `app/normalize.py`
+  and looking it up against the catalog and the caller's pantry. A suggestion for an ingredient
+  that is not actually missing is dropped (spec section 4).
 - Afterwards it records `usage.input_tokens` and `usage.output_tokens` and the cost they imply in
   `ai_monthly_usage`, increments `ai_user_daily_usage`, and writes the cache row.
 
@@ -847,8 +862,9 @@ recipe page with an "AI-generated" badge.
 - `POST /recipes/generate` takes no body and uses the caller's saved pantry. An empty pantry
   returns 422.
 - Guardrails and the usage ledger work exactly as in 10.11, with the generation daily limit.
-- The call: `claude-opus-5`, structured outputs (title, ingredients with measurements, steps),
-  `output_config: {"effort": "low"}`, `max_tokens` 2048.
+- The call: `claude-opus-5-5`, structured outputs (title, ingredients with measurements,
+  steps), `output_config: {"effort": "low"}`, `max_tokens` 8192 (see 10.11 on thinking
+  tokens).
 - The prompt gives the pantry and asks for a recipe that uses only those ingredients, with a short
   title, measurements, and numbered steps.
 - Every returned ingredient name is normalized through `app/normalize.py` and mapped to the
@@ -997,7 +1013,7 @@ Tables are defined as SQLAlchemy ORM models in `models.py`, and Alembic migratio
 | `ai_monthly_usage` | `month` | text PK | `YYYY-MM` |
 | | `calls` | integer, not null, default 0 | |
 | | `input_tokens`, `output_tokens` | bigint, not null, default 0 | Taken from each response's `usage` |
-| | `cost_cents` | integer, not null, default 0 | Compared against `AI_MONTHLY_BUDGET_CENTS` |
+| | `cost_cents` | integer, not null, default 0 | Compared against `AI_MONTHLY_BUDGET_CENTS`. Recomputed from the running token totals on every write, never accumulated per call: one call costs about a cent, so rounding each one to an integer would lose a tenth of the spend every time, and a sub-cent call would add nothing at all — a cap fed by rounded-down pennies could never fire |
 | `ai_user_daily_usage` | `user_id` | text FK → users, cascade delete | PK with `day` and `feature` |
 | | `day` | date | |
 | | `feature` | text | `substitutions` or `generation` |
@@ -1031,7 +1047,9 @@ Note: `pantry_items` has no quantity column, by design (see section 4).
 |---|---|---|---|
 | `ANTHROPIC_API_KEY` | From `.env` | Not set; the client is stubbed | `ANTHROPIC_API_KEY_PARAM` = `/scrappy/prod/anthropic_api_key`, read from SSM once per cold start |
 | `AI_ENABLED` | `true` | `false` unless a test overrides it | `true`; set to `false` to disable both features without a deploy |
-| `AI_MODEL` | `claude-opus-5` | — | `claude-opus-5` |
+| `AI_MODEL` | `claude-opus-5-5` | — | `claude-opus-5-5` |
+| `AI_INPUT_CENTS_PER_MTOK` | `400` | — | `400` |
+| `AI_OUTPUT_CENTS_PER_MTOK` | `2000` | — | `2000` |
 | `AI_MONTHLY_BUDGET_CENTS` | `500` | — | `500` |
 | `AI_DAILY_SUBSTITUTIONS_PER_USER` | `10` | — | `10` |
 | `AI_DAILY_GENERATIONS_PER_USER` | `3` | — | `3` |
@@ -1066,9 +1084,10 @@ S3 storage for the frontend costs fractions of a cent. CloudWatch log retention 
 
 **AI spend (the only variable cost)**
 
-At Claude Opus 5 pricing ($5 per million input tokens, $25 per million output), a substitution
-request costs about 0.8¢ and a generated recipe about 2.2¢. The $5 cap therefore covers roughly
-300 substitutions plus 100 generated recipes a month, far more than a portfolio demo will use.
+At Claude Opus 5.5 pricing ($4 per million input tokens, $20 per million output), a
+substitution request costs about 1.1¢ and a generated recipe about 2.5¢, counting the thinking
+tokens that `effort: "low"` keeps small. The $5 cap therefore covers roughly 300 substitutions
+plus 70 generated recipes a month, far more than a portfolio demo will use.
 
 Six guardrails, three of which stop spending outright:
 
