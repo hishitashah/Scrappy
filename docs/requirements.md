@@ -158,7 +158,7 @@ Assumed staples supplement a pantry; they never create one. A user with an empty
 **US-1** — As a new user, I want to create an account with my email and a password, so that my pantry is saved across devices.
 - Password rules: at least 8 characters, with a lowercase letter, an uppercase letter, and a number. The form checks them before submitting, and Cognito enforces them on the server.
 - A duplicate email shows "An account with this email already exists," not a generic failure.
-- Successful signup logs the user straight in, with no email verification step.
+- Signing up emails a six-digit code, which must be entered before the account works. This replaces the original "no verification step" decision, taken October 28, 2026: one extra step for the user, in exchange for an address not being registrable by someone who doesn't own it.
 
 **US-2** — As a returning user, I want to log in and land on my saved pantry, so that I can get to results in one step.
 - The session survives a browser refresh and lasts up to 30 days.
@@ -593,14 +593,13 @@ When at least one ingredient is missing, the page also shows the "Suggest substi
 
 **AWS (`auth.tf`)**
 
-- **User pool:** email as the username, the password policy from US-1, account recovery by email, and Cognito's default email sender.
+- **User pool:** email as the username, the password policy from US-1, account recovery by email, and Cognito's default email sender — free, and capped at 50 messages a day, which is the reason a real product would move to SES. Verification messages use `CONFIRM_WITH_CODE`.
 - **App client:**
   - no client secret
   - auth flows `ALLOW_USER_SRP_AUTH` and `ALLOW_REFRESH_TOKEN_AUTH`
   - access token valid 1 hour, refresh token valid 30 days
-- **Pre-sign-up trigger:** `infra/lambdas/pre_signup.py`. When `triggerSource` is `PreSignUp_SignUp`, it sets `autoConfirmUser` and `autoVerifyEmail` to true. This skips verification while still allowing password-reset emails.
-  - Accepted trade-off: someone can register an email address they don't own.
-- **Permission:** a Lambda permission lets Cognito invoke the trigger.
+- **No pre-sign-up trigger.** This section originally specified `infra/lambdas/pre_signup.py`, auto-confirming every sign-up to skip the verification email, accepting that someone could register an address they don't own. That was reversed on October 28, 2026 in favour of real verification, so neither the Lambda nor its invoke permission exists. `describe-user-pool` should report `"LambdaConfig": {}`.
+- **App client attributes:** `read_attributes` and `write_attributes` are limited to email, so a signed-in user cannot rewrite their own profile through the client.
 
 **Tests**
 

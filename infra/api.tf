@@ -109,6 +109,10 @@ resource "aws_lambda_function" "api" {
       # and AUTH_MODE change at M5 (spec 10.4).
       AUTH_MODE         = "shared"
       ALLOW_SHARED_MODE = "true"
+
+      # Known now so the backend branch has them waiting; unused until AUTH_MODE flips.
+      COGNITO_USER_POOL_ID = aws_cognito_user_pool.users.id
+      COGNITO_CLIENT_ID    = aws_cognito_user_pool_client.web.id
     }
   }
 
