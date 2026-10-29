@@ -1,6 +1,7 @@
 """Configuration resolution, including the production SSM lookup (spec 10.7, 13)."""
 
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -119,7 +120,10 @@ def test_ai_is_off_by_default() -> None:
     assert Settings(_env_file=None).ai_enabled is False
 
 
-def test_the_api_key_comes_from_ssm_when_ai_is_on(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_api_key_comes_from_ssm_when_ai_is_on(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
     fake = FakeSsm("sk-ant-from-ssm")
     monkeypatch.setattr(settings_module, "_read_ssm_parameter", fake)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
@@ -131,9 +135,18 @@ def test_the_api_key_comes_from_ssm_when_ai_is_on(monkeypatch: pytest.MonkeyPatc
     assert fake.calls == ["/scrappy/prod/anthropic_api_key"]
 
 
-def test_no_key_is_fetched_while_the_kill_switch_is_off(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_no_key_is_fetched_while_the_kill_switch_is_off(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """The parameter exists in production from M6 but holds a placeholder until the
-    feature is switched on, so a cold start shouldn't spend a round trip on it."""
+    feature is switched on, so a cold start shouldn't spend a round trip on it.
+
+    `chdir` into an empty directory first, because `Settings` reads `.env` by a relative
+    path. Without it this test asserts against whatever the developer happens to have in
+    their own `.env` — and once that file holds a real key, the assertion fails and pytest
+    prints the key into the failure output.
+    """
+    monkeypatch.chdir(tmp_path)
     fake = FakeSsm("placeholder")
     monkeypatch.setattr(settings_module, "_read_ssm_parameter", fake)
     monkeypatch.setenv("DATABASE_URL", LOCAL_URL)

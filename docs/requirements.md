@@ -690,8 +690,9 @@ Re-running the script must change nothing.
 - **Lambda:**
   - `python3.13`, `x86_64`
   - handler `app.main.handler`
-  - 512 MB memory, 30-second timeout (an AI call can exceed 10 seconds, and the
-    ceiling costs nothing: Lambda bills per GB-second actually used)
+  - 512 MB memory, 30-second timeout. A measured substitution call takes about 5 seconds
+    locally, so 10 would have left no margin for a cold start or a slower answer. The
+    ceiling itself costs nothing: Lambda bills per GB-second actually used.
   - code from the zip that CI builds, with `source_code_hash`
   - environment variables: `ENV`, `APP_VERSION`, `AUTH_MODE`, `ALLOW_SHARED_MODE` (required while `AUTH_MODE=shared`, or settings validation refuses to start and every request 500s — removed at M5), `DATABASE_URL_PARAM`, `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID`, and, from M6, `ANTHROPIC_API_KEY_PARAM`, `AI_ENABLED`, `AI_MODEL`, `AI_MONTHLY_BUDGET_CENTS`, `AI_DAILY_SUBSTITUTIONS_PER_USER`, `AI_DAILY_GENERATIONS_PER_USER`
 - **Function URL:**
@@ -1089,9 +1090,16 @@ S3 storage for the frontend costs fractions of a cent. CloudWatch log retention 
 **AI spend (the only variable cost)**
 
 At Claude Opus 5.5 pricing ($4 per million input tokens, $20 per million output), a
-substitution request costs about 1.1¢ and a generated recipe about 2.5¢, counting the thinking
-tokens that `effort: "low"` keeps small. The $5 cap therefore covers roughly 300 substitutions
-plus 70 generated recipes a month, far more than a portfolio demo will use.
+substitution request costs **0.6¢**. That is measured, not estimated: the first real call, on
+October 29, 2026, used 692 input and 148 output tokens for a two-ingredient request — 0.57¢.
+An earlier estimate of 1.1¢ assumed far more reasoning than `effort: "low"` actually spends.
+
+A generated recipe (F8) is still an estimate at about 2.5¢, since it has to write a whole
+recipe rather than two lines; it will be measured the same way when F8 ships.
+
+So $5 covers roughly 800 substitutions, or 200 generated recipes, in a month — orders of
+magnitude more than a portfolio demo will use. The cap exists for the runaway case, not the
+expected one.
 
 Six guardrails, three of which stop spending outright:
 
