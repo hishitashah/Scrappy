@@ -43,3 +43,15 @@ export interface RecipeDetail {
   steps: string[]
   ingredients: RecipeIngredient[]
 }
+
+/** One AI substitution (spec 10.11). `in_pantry` is computed by the API, not the model. */
+export interface Substitution {
+  missing_ingredient: string
+  suggestion: string
+  reason: string
+  in_pantry: boolean
+}
+
+export interface SubstitutionsResponse {
+  suggestions: Substitution[]
+}

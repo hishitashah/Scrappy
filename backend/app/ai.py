@@ -126,13 +126,26 @@ class AnthropicSubstitutions:
     def suggest(
         self, *, recipe_title: str, missing: Sequence[str], pantry: Sequence[str]
     ) -> AiResult:
-        response = self._client.messages.parse(  # type: ignore[attr-defined]
-            model=self._settings.ai_model,
-            max_tokens=MAX_TOKENS,
-            output_config={"effort": EFFORT},
-            output_format=_SubstitutionList,
-            messages=[{"role": "user", "content": build_prompt(recipe_title, missing, pantry)}],
-        )
+        # Imported here, not at module level, so a deployment with AI switched off never
+        # loads the SDK at all. `APIError` is the base class of every failure the SDK
+        # raises: a rejected key, a rate limit, a timeout, a dropped connection.
+        from anthropic import APIError
+
+        try:
+            response = self._client.messages.parse(  # type: ignore[attr-defined]
+                model=self._settings.ai_model,
+                max_tokens=MAX_TOKENS,
+                output_config={"effort": EFFORT},
+                output_format=_SubstitutionList,
+                messages=[{"role": "user", "content": build_prompt(recipe_title, missing, pantry)}],
+            )
+        except APIError as failure:
+            # No token counts: a request that was rejected or never answered was not
+            # billed, and the ledger must never invent spend it cannot see. Without this
+            # branch the error reaches the handler in observability.py and becomes a 500,
+            # which reads as a Scrappy bug rather than "the model is unreachable".
+            logger.warning("ai call failed", extra={"reason": type(failure).__name__})
+            raise AiUnavailable(f"anthropic call failed: {type(failure).__name__}") from failure
 
         # Checked before the content is read, because both of these leave `parsed_output`
         # empty or partial. `refusal` is a safety decline; `max_tokens` means truncated.

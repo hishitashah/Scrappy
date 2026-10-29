@@ -138,11 +138,10 @@ resource "aws_lambda_function" "api" {
       COGNITO_CLIENT_ID    = aws_cognito_user_pool_client.web.id
 
       # AI features (F7, F8). AI_ENABLED is the kill switch (spec 14, guardrail 5):
-      # flipping it in the console disables both features without a deploy. It ships
-      # "false" in this branch, so the endpoint exists and answers 503 until the key is in
-      # SSM and the panel is built.
+      # setting it to "false" in the Lambda console disables both features immediately,
+      # without a deploy and without touching this file.
       ANTHROPIC_API_KEY_PARAM         = aws_ssm_parameter.anthropic_api_key.name
-      AI_ENABLED                      = "false"
+      AI_ENABLED                      = "true"
       AI_MODEL                        = "claude-opus-5-5"
       AI_MONTHLY_BUDGET_CENTS         = "500"
       AI_DAILY_SUBSTITUTIONS_PER_USER = "10"

@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { apiFetch } from './client'
-import type { Ingredient, Match, PantryItem, RecipeDetail } from './types'
+import type { Ingredient, Match, PantryItem, RecipeDetail, SubstitutionsResponse } from './types'
 
 export const queryKeys = {
   ingredients: ['ingredients'] as const,
@@ -89,5 +89,23 @@ export function useRemovePantryItem() {
       void queryClient.invalidateQueries({ queryKey: queryKeys.pantry })
       void queryClient.invalidateQueries({ queryKey: queryKeys.matches })
     },
+  })
+}
+
+/**
+ * Ask for substitutions for one recipe's missing ingredients (F7, spec 10.11).
+ *
+ * A mutation rather than a query, and that is the whole point: a query runs on mount, and
+ * every call here spends money (spec 14). A mutation runs only when something calls
+ * `mutate` — which is the button, and nothing else.
+ *
+ * Deliberately absent from `queryKeys`: the answer belongs to the press rather than to the
+ * cache, so navigating away forgets it. Pressing again costs a round trip but no money,
+ * because the server already has the answer cached.
+ */
+export function useSubstitutions(recipeId: number) {
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<SubstitutionsResponse>(`/recipes/${recipeId}/substitutions`, { method: 'POST' }),
   })
 }

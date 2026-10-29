@@ -827,6 +827,10 @@ suggestions already in the pantry marked. Nothing is requested until the button 
   fails the schema, one that stops with `refusal`, and one that stops at `max_tokens`. All
   three are still written to `ai_monthly_usage`, since the tokens were billed either way: a
   ledger that counted only the answers we kept would leave the monthly cap reading low.
+- A call that never reached the model — a rejected key, a rate limit, a timeout, a dropped
+  connection — is also a `502`, but records nothing, because nothing was billed. Without
+  this the SDK's exception would surface as a `500`, which reads as a Scrappy bug rather
+  than an unreachable model.
 - The prompt states the recipe title, the missing ingredients, and the pantry, and asks for one
   substitution per missing ingredient, preferring pantry items, with a reason of at most 15 words,
   and permission to return nothing for an ingredient with no sensible substitute.

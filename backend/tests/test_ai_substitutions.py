@@ -228,7 +228,12 @@ def test_a_cached_answer_does_not_use_up_the_daily_allowance(
 def test_an_unusable_answer_returns_502(
     client: TestClient, session: Session, stocked_pantry: int
 ) -> None:
-    broken = FakeClient(AiUnavailable("stopped with refusal"))
+    """A call that reported no tokens — a rejected key, a timeout — records nothing.
+
+    `AiUnavailable` with zero tokens is how the adapter says "this never reached the
+    model", so there is no spend to record and the ledger stays empty.
+    """
+    broken = FakeClient(AiUnavailable("anthropic call failed: AuthenticationError"))
     app.dependency_overrides[get_settings] = lambda: ai_settings()
     app.dependency_overrides[get_substitution_client] = lambda: broken
 
@@ -236,6 +241,7 @@ def test_an_unusable_answer_returns_502(
 
     assert response.status_code == 502
     assert "usable" in response.json()["detail"]
+    assert session.execute(text("SELECT count(*) FROM ai_monthly_usage")).scalar() == 0
 
 
 def test_the_ledger_records_the_tokens_the_response_reported(
