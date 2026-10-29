@@ -60,9 +60,14 @@ export function IngredientCombobox({ ingredients, ownedIds, onAdd, disabled }: P
               <ComboboxOption
                 key={ingredient.id}
                 value={ingredient}
-                className="cursor-pointer px-5 py-2.5 text-ink data-focus:bg-forest-light"
+                className="flex cursor-pointer items-baseline justify-between gap-4 px-5 py-2.5 text-ink data-focus:bg-forest-light"
               >
-                {ingredient.display_name}
+                <span>{ingredient.display_name}</span>
+                {/* Makes the ranking legible: "Eggs · 218" next to "Egg Plants · 9" shows
+                    at a glance which choice will actually match recipes. */}
+                <span className="shrink-0 text-xs text-muted">
+                  {ingredient.recipe_count} {ingredient.recipe_count === 1 ? 'recipe' : 'recipes'}
+                </span>
               </ComboboxOption>
             ))}
           </ComboboxOptions>

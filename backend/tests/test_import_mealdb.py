@@ -14,6 +14,7 @@ from scripts.import_mealdb import (
     parse_meal,
     split_steps,
     store_autocomplete_aliases,
+    upsert_ingredients,
 )
 
 CATALOG_NAMES = ["Egg", "Rice", "Garlic", "Olive Oil", "Salt"]
@@ -249,3 +250,35 @@ def test_aliases_are_stored_for_autocomplete(session: Session) -> None:
 
     session.refresh(target)
     assert target.aliases == ["garlic clove", "minced garlic"]
+
+
+def test_a_direct_name_replaces_one_that_came_through_an_alias(session: Session) -> None:
+    """The generic onion should be called "Onions", not "Chopped Onion".
+
+    A row keeps the first display name it is given. When the first raw line to reach a
+    canonical form does so through the alias list, the label is misleading, and the
+    autocomplete then offers the right ingredient under the wrong name.
+    """
+    summary = ImportSummary()
+    # "Chopped Onion" reaches `onion` only via data/aliases.json.
+    upsert_ingredients(session, [("onion", "Chopped Onion")], summary)
+    assert session.scalar(select(Ingredient.display_name).where(Ingredient.name == "onion")) == (
+        "Chopped Onion"
+    )
+
+    upsert_ingredients(session, [("onion", "Onions")], summary)
+
+    assert session.scalar(select(Ingredient.display_name).where(Ingredient.name == "onion")) == (
+        "Onions"
+    )
+
+
+def test_a_direct_name_is_not_replaced_by_an_alias_name(session: Session) -> None:
+    summary = ImportSummary()
+    upsert_ingredients(session, [("onion", "Onions")], summary)
+
+    upsert_ingredients(session, [("onion", "Chopped Onion")], summary)
+
+    assert session.scalar(select(Ingredient.display_name).where(Ingredient.name == "onion")) == (
+        "Onions"
+    )

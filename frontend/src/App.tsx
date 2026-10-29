@@ -1,4 +1,5 @@
 import { useAuthenticator } from '@aws-amplify/ui-react'
+import type { ReactNode } from 'react'
 import { Navigate, Route, Routes } from 'react-router'
 
 import { LoginScreen } from './auth/LoginScreen'
@@ -10,21 +11,22 @@ import { RecipeIngredientsPage } from './pages/RecipeIngredientsPage'
 import { RecipeIntroPage } from './pages/RecipeIntroPage'
 import { RecipeStepsPage } from './pages/RecipeStepsPage'
 
-/** The app itself, which only ever renders for a signed-in user. */
-function AuthenticatedApp() {
+/** A page that needs a signed-in user, inside the app's chrome. */
+function Protected({ children }: { children: ReactNode }) {
   return (
-    <AppFrame>
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        {/* One page per URL, so back, forward and refresh all behave (spec US-7). */}
-        <Route path="/recipes/:id" element={<RecipeIntroPage />} />
-        <Route path="/recipes/:id/ingredients" element={<RecipeIngredientsPage />} />
-        <Route path="/recipes/:id/steps" element={<RecipeStepsPage />} />
-      </Routes>
-    </AppFrame>
+    <RequireAuth>
+      <AppFrame>{children}</AppFrame>
+    </RequireAuth>
   )
 }
 
+/**
+ * Every route in one table, deliberately flat.
+ *
+ * An earlier version nested a second <Routes> inside a `/recipes/*` route. Nested routes
+ * match against the *remaining* path, so an inner `/recipes/:id` never matched — clicking a
+ * result rendered a blank page with no request and no error.
+ */
 export default function App() {
   const { authStatus } = useAuthenticator((context) => [context.authStatus])
 
@@ -33,7 +35,15 @@ export default function App() {
       {/* `/` is the front door: the landing page for visitors, the pantry for members. */}
       <Route
         path="/"
-        element={authStatus === 'authenticated' ? <AuthenticatedApp /> : <LandingPage />}
+        element={
+          authStatus === 'authenticated' ? (
+            <Protected>
+              <HomePage />
+            </Protected>
+          ) : (
+            <LandingPage />
+          )
+        }
       />
 
       <Route
@@ -41,13 +51,29 @@ export default function App() {
         element={authStatus === 'authenticated' ? <Navigate to="/" replace /> : <LoginScreen />}
       />
 
-      {/* Everything else is behind the wall, and bounces to the landing page when signed out. */}
+      {/* One page per URL, so back, forward and refresh all behave (spec US-7). */}
       <Route
-        path="/recipes/*"
+        path="/recipes/:id"
         element={
-          <RequireAuth>
-            <AuthenticatedApp />
-          </RequireAuth>
+          <Protected>
+            <RecipeIntroPage />
+          </Protected>
+        }
+      />
+      <Route
+        path="/recipes/:id/ingredients"
+        element={
+          <Protected>
+            <RecipeIngredientsPage />
+          </Protected>
+        }
+      />
+      <Route
+        path="/recipes/:id/steps"
+        element={
+          <Protected>
+            <RecipeStepsPage />
+          </Protected>
         }
       />
     </Routes>

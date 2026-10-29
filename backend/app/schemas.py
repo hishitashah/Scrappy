@@ -20,6 +20,9 @@ class IngredientResponse(BaseModel):
     name: str
     display_name: str
     aliases: list[str]
+    # How many recipes use it. The browser ranks suggestions by this, so "Eggs" (218
+    # recipes) is offered before "Free-range Egg, Beaten" (2) for the same typing.
+    recipe_count: int
 
 
 class PantryItemResponse(BaseModel):

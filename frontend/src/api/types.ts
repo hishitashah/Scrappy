@@ -5,6 +5,8 @@ export interface Ingredient {
   name: string
   display_name: string
   aliases: string[]
+  /** How many recipes use it; suggestions are ranked by this. */
+  recipe_count: number
 }
 
 export interface PantryItem {

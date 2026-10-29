@@ -40,7 +40,36 @@ export function stripQuantityWords(query: string): string {
 }
 
 function haystack(ingredient: Ingredient): string[] {
-  return [ingredient.name.toLowerCase(), ...ingredient.aliases.map((a) => a.toLowerCase())]
+  return [
+    ingredient.name.toLowerCase(),
+    // The display name carries the plural the catalog's canonical name drops: typing
+    // "eggs" has to find the ingredient stored as "egg" and shown as "Eggs".
+    ingredient.display_name.toLowerCase(),
+    ...ingredient.aliases.map((a) => a.toLowerCase()),
+  ]
+}
+
+/**
+ * English plural endings, enough to meet the catalog's singular names halfway.
+ *
+ * The import singularizes with a full library; the browser only needs the common cases,
+ * and the result is compared against both forms, so a wrong guess costs nothing.
+ */
+function singular(word: string): string {
+  if (word.endsWith('ies') && word.length > 4) return `${word.slice(0, -3)}y`
+  if (word.endsWith('ses') || word.endsWith('xes') || word.endsWith('ches')) {
+    return word.slice(0, -2)
+  }
+  if (word.endsWith('s') && !word.endsWith('ss')) return word.slice(0, -1)
+  return word
+}
+
+/** The forms of a query worth testing: as typed, and with the last word singularized. */
+function queryForms(query: string): string[] {
+  const words = query.split(' ')
+  const lastWord = words[words.length - 1] ?? ''
+  const singularized = [...words.slice(0, -1), singular(lastWord)].join(' ')
+  return singularized === query ? [query] : [query, singularized]
 }
 
 /** Levenshtein distance, used only for the "Did you mean…?" fallback. */
@@ -84,16 +113,32 @@ export function filterIngredients(
   const available = ingredients.filter(
     (ingredient) => !ownedIds.has(ingredient.id) && !ASSUMED_STAPLES.has(ingredient.name),
   )
+  const forms = queryForms(query)
+  const exact: Ingredient[] = []
   const prefix: Ingredient[] = []
   const contains: Ingredient[] = []
 
   for (const ingredient of available) {
     const fields = haystack(ingredient)
-    if (fields.some((field) => field.startsWith(query))) prefix.push(ingredient)
-    else if (fields.some((field) => field.includes(query))) contains.push(ingredient)
+    if (fields.some((field) => forms.includes(field))) exact.push(ingredient)
+    else if (fields.some((field) => forms.some((form) => field.startsWith(form)))) {
+      prefix.push(ingredient)
+    } else if (fields.some((field) => forms.some((form) => field.includes(form)))) {
+      contains.push(ingredient)
+    }
   }
 
-  const suggestions = [...prefix, ...contains].slice(0, MAX_SUGGESTIONS)
+  // Within each tier, the ingredient used by more recipes comes first. Without this,
+  // typing "egg" offered "Egg Noodles" before "Eggs" purely because of alphabetical
+  // order — and an ingredient in two recipes is nearly useless for matching.
+  const byUsefulness = (a: Ingredient, b: Ingredient) =>
+    b.recipe_count - a.recipe_count || a.display_name.localeCompare(b.display_name)
+
+  const suggestions = [
+    ...exact.sort(byUsefulness),
+    ...prefix.sort(byUsefulness),
+    ...contains.sort(byUsefulness),
+  ].slice(0, MAX_SUGGESTIONS)
   if (suggestions.length > 0) return { suggestions, didYouMean: [] }
 
   // Nothing matched, so fall back to near-misses: a typo should cost one click, not a retype.
