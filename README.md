@@ -41,7 +41,7 @@ flowchart LR
 | Frontend | React 19, TypeScript (strict), Vite, React Router, TanStack Query 5, Tailwind CSS 4, Headless UI |
 | Auth UI | Amplify UI `Authenticator` + `aws-amplify` 6 |
 | API | Python 3.13, FastAPI, Pydantic 2, pydantic-settings, Mangum |
-| AI features | `anthropic` SDK, Claude Opus 5, backend only, with a hard $5/month spend cap |
+| AI features | `anthropic` SDK, Claude Opus 5.5, backend only, with a hard $5/month spend cap |
 | Database | PostgreSQL 18, SQLAlchemy 2, psycopg 3, Alembic |
 | Auth | Amazon Cognito, PyJWT |
 | Hosting | AWS Lambda, S3, CloudFront, SSM Parameter Store, CloudWatch; Neon Postgres |

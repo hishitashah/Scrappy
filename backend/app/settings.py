@@ -36,6 +36,28 @@ class Settings(BaseSettings):
     cognito_user_pool_id: str | None = None
     cognito_client_id: str | None = None
 
+    # --- AI features (F7, F8). Backend only: no AI setting is ever exposed to the browser.
+    #
+    # The key comes from the environment locally and from SSM on Lambda, like the database
+    # URL. Tests set neither, because they replace the client rather than call it.
+    anthropic_api_key: str | None = None
+    anthropic_api_key_param: str | None = None
+
+    # The kill switch (spec 14, guardrail 5): flipping this to false disables both AI
+    # features without a deploy. Off by default, so nothing can spend by accident.
+    ai_enabled: bool = False
+    ai_model: str = "claude-opus-5-5"
+
+    # The hard cap. $5 a month, checked before every call that would spend.
+    ai_monthly_budget_cents: int = 500
+    ai_daily_substitutions_per_user: int = 10
+    ai_daily_generations_per_user: int = 3
+
+    # Claude Opus 5.5 list price, in cents per million tokens ($4 in, $20 out). Config
+    # rather than code, so a price change is a deploy variable and not a patch.
+    ai_input_cents_per_mtok: int = 400
+    ai_output_cents_per_mtok: int = 2000
+
     @property
     def cognito_issuer(self) -> str:
         """The `iss` claim every token from this pool carries."""
@@ -53,6 +75,15 @@ class Settings(BaseSettings):
             raise ValueError(
                 "AUTH_MODE=shared is not allowed when ENV=prod; "
                 "set ALLOW_SHARED_MODE=true to override before login ships."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def require_an_api_key_when_ai_is_enabled(self) -> Self:
+        """Catch "enabled but no key" at startup, not on the first button press."""
+        if self.ai_enabled and not (self.anthropic_api_key or self.anthropic_api_key_param):
+            raise ValueError(
+                "AI_ENABLED=true requires ANTHROPIC_API_KEY or ANTHROPIC_API_KEY_PARAM"
             )
         return self
 
@@ -91,4 +122,12 @@ def get_settings() -> Settings:
     settings = Settings()
     if settings.database_url_param and "DATABASE_URL" not in os.environ:
         settings.database_url = _read_ssm_parameter(settings.database_url_param)
+    # Only when AI is actually on: while the kill switch is off the parameter still exists
+    # but holds a placeholder, and there is no reason to spend a cold start fetching it.
+    if (
+        settings.ai_enabled
+        and settings.anthropic_api_key_param
+        and "ANTHROPIC_API_KEY" not in os.environ
+    ):
+        settings.anthropic_api_key = _read_ssm_parameter(settings.anthropic_api_key_param)
     return settings

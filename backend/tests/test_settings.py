@@ -98,3 +98,47 @@ def test_engine_options_for_local_postgres_are_left_alone() -> None:
 
 def test_settings_defaults_have_no_ssm_parameter() -> None:
     assert Settings(_env_file=None).database_url_param is None
+
+
+def test_ai_enabled_without_a_key_is_refused() -> None:
+    """A half-configured feature should fail at startup, not on the first button press."""
+    with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
+        Settings(_env_file=None, ai_enabled=True)
+
+
+def test_ai_enabled_is_satisfied_by_the_ssm_parameter_name() -> None:
+    settings = Settings(
+        _env_file=None, ai_enabled=True, anthropic_api_key_param="/scrappy/prod/anthropic_api_key"
+    )
+
+    assert settings.ai_enabled is True
+
+
+def test_ai_is_off_by_default() -> None:
+    """The kill switch defaults to off, so nothing can spend by accident."""
+    assert Settings(_env_file=None).ai_enabled is False
+
+
+def test_the_api_key_comes_from_ssm_when_ai_is_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = FakeSsm("sk-ant-from-ssm")
+    monkeypatch.setattr(settings_module, "_read_ssm_parameter", fake)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("DATABASE_URL", LOCAL_URL)
+    monkeypatch.setenv("AI_ENABLED", "true")
+    monkeypatch.setenv("ANTHROPIC_API_KEY_PARAM", "/scrappy/prod/anthropic_api_key")
+
+    assert get_settings().anthropic_api_key == "sk-ant-from-ssm"
+    assert fake.calls == ["/scrappy/prod/anthropic_api_key"]
+
+
+def test_no_key_is_fetched_while_the_kill_switch_is_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The parameter exists in production from M6 but holds a placeholder until the
+    feature is switched on, so a cold start shouldn't spend a round trip on it."""
+    fake = FakeSsm("placeholder")
+    monkeypatch.setattr(settings_module, "_read_ssm_parameter", fake)
+    monkeypatch.setenv("DATABASE_URL", LOCAL_URL)
+    monkeypatch.setenv("AI_ENABLED", "false")
+    monkeypatch.setenv("ANTHROPIC_API_KEY_PARAM", "/scrappy/prod/anthropic_api_key")
+
+    assert get_settings().anthropic_api_key is None
+    assert fake.calls == []

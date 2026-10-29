@@ -1,8 +1,10 @@
 """ORM table definitions (spec section 12). Alembic migrations are generated from these."""
 
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
+    BigInteger,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -101,3 +103,55 @@ class PantryItem(Base):
     )
     ingredient_id: Mapped[int] = mapped_column(ForeignKey("ingredients.id"), primary_key=True)
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AiMonthlyUsage(Base):
+    """What every AI call this month has cost, in one row (spec 12, 14).
+
+    `cost_cents` is not a running sum of per-call costs: one substitution costs about a
+    cent, so rounding each call to an integer would lose a tenth of the spend every time,
+    and a sub-cent call would add nothing at all. A monthly cap fed by rounded-down pennies
+    could never fire. Instead the token totals are accumulated — they are exact integers —
+    and the cost is recomputed from them on every write.
+    """
+
+    __tablename__ = "ai_monthly_usage"
+
+    month: Mapped[str] = mapped_column(String(7), primary_key=True)  # "YYYY-MM", UTC
+    calls: Mapped[int] = mapped_column(server_default="0")
+    input_tokens: Mapped[int] = mapped_column(BigInteger, server_default="0")
+    output_tokens: Mapped[int] = mapped_column(BigInteger, server_default="0")
+    # Compared against AI_MONTHLY_BUDGET_CENTS before every call that would spend.
+    cost_cents: Mapped[int] = mapped_column(server_default="0")
+
+
+class AiUserDailyUsage(Base):
+    """One user's calls today, per feature — the per-user fairness limit (spec 14)."""
+
+    __tablename__ = "ai_user_daily_usage"
+
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    day: Mapped[date] = mapped_column(Date, primary_key=True)  # UTC
+    # "substitutions" (F7) or "generation" (F8).
+    feature: Mapped[str] = mapped_column(Text, primary_key=True)
+    calls: Mapped[int] = mapped_column(server_default="0")
+
+
+class SubstitutionCache(Base):
+    """Answers already paid for (spec 10.11).
+
+    Keyed by the recipe and a hash of the pantry, because those two are the whole question.
+    The key does not include the prompt, so changing the prompt means clearing this table.
+    """
+
+    __tablename__ = "substitution_cache"
+
+    recipe_id: Mapped[int] = mapped_column(
+        ForeignKey("recipes.id", ondelete="CASCADE"), primary_key=True
+    )
+    # SHA-256 of the caller's sorted pantry ingredient ids.
+    pantry_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    payload: Mapped[list[dict[str, object]]] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
