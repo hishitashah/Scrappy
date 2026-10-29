@@ -51,11 +51,6 @@ def test_shared_mode_returns_the_fixed_user(session: Session) -> None:
     assert request.state.user_id == SHARED_USER_ID
 
 
-def test_cognito_mode_is_not_implemented_yet(session: Session) -> None:
-    with pytest.raises(NotImplementedError):
-        get_current_user(fake_request(), session, Settings(env="local", auth_mode="cognito"))
-
-
 def test_production_refuses_shared_mode() -> None:
     with pytest.raises(ValueError, match="AUTH_MODE=shared is not allowed"):
         Settings(env="prod", auth_mode="shared", allow_shared_mode=False)
@@ -68,6 +63,17 @@ def test_production_allows_shared_mode_with_the_override() -> None:
 
 
 def test_production_allows_cognito_mode() -> None:
-    settings = Settings(env="prod", auth_mode="cognito")
+    settings = Settings(
+        env="prod",
+        auth_mode="cognito",
+        cognito_user_pool_id="us-east-1_test",
+        cognito_client_id="client123",
+    )
 
     assert settings.auth_mode == "cognito"
+
+
+def test_cognito_mode_requires_the_pool_settings() -> None:
+    """A half-configured pool is a startup error, not a surprise on the first request."""
+    with pytest.raises(ValueError, match="requires COGNITO_USER_POOL_ID"):
+        Settings(env="local", auth_mode="cognito")
