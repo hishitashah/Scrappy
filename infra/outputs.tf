@@ -22,3 +22,13 @@ output "deploy_role_arn" {
   description = "Set this as the AWS_DEPLOY_ROLE_ARN repository variable in GitHub."
   value       = aws_iam_role.github_deploy.arn
 }
+
+output "cognito_user_pool_id" {
+  description = "VITE_COGNITO_USER_POOL_ID for the frontend build."
+  value       = aws_cognito_user_pool.users.id
+}
+
+output "cognito_client_id" {
+  description = "VITE_COGNITO_CLIENT_ID for the frontend build."
+  value       = aws_cognito_user_pool_client.web.id
+}
