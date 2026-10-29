@@ -5,12 +5,18 @@ import type { Ingredient, Match, PantryItem, RecipeDetail } from '../api/types'
 const API = 'http://localhost:8000'
 
 export const catalog: Ingredient[] = [
-  { id: 1, name: 'egg', display_name: 'Egg', aliases: ['eggs'] },
-  { id: 2, name: 'rice', display_name: 'Rice', aliases: [] },
-  { id: 3, name: 'garlic', display_name: 'Garlic', aliases: ['garlic clove'] },
-  { id: 4, name: 'olive oil', display_name: 'Olive Oil', aliases: ['extra virgin olive oil'] },
-  { id: 5, name: 'salt', display_name: 'Salt', aliases: [] },
-  { id: 6, name: 'water', display_name: 'Water', aliases: [] },
+  { id: 1, name: 'egg', display_name: 'Eggs', aliases: ['eggs'], recipe_count: 218 },
+  { id: 2, name: 'rice', display_name: 'Rice', aliases: [], recipe_count: 35 },
+  { id: 3, name: 'garlic', display_name: 'Garlic', aliases: ['garlic clove'], recipe_count: 300 },
+  {
+    id: 4,
+    name: 'olive oil',
+    display_name: 'Olive Oil',
+    aliases: ['extra virgin olive oil'],
+    recipe_count: 120,
+  },
+  { id: 5, name: 'salt', display_name: 'Salt', aliases: [], recipe_count: 400 },
+  { id: 6, name: 'water', display_name: 'Water', aliases: [], recipe_count: 150 },
 ]
 
 /** Mutable per-test pantry state, reset by `resetPantry`. */

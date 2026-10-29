@@ -20,33 +20,33 @@ async function renderPantry() {
 describe('PantryEditor', () => {
   beforeEach(() => resetPantry())
 
-  it('suggests Egg when the user types "egg"', async () => {
+  it('suggests Eggs when the user types "egg"', async () => {
     const user = await renderPantry()
 
     await user.type(screen.getByLabelText('Add an ingredient'), 'egg')
 
-    expect(await screen.findByRole('option', { name: 'Egg' })).toBeInTheDocument()
+    expect(await screen.findByRole('option', { name: /^Eggs/ })).toBeInTheDocument()
   })
 
-  it('still suggests Egg for "1 egg" and Rice for "a cup of rice"', async () => {
+  it('still suggests Eggs for "1 egg" and Rice for "a cup of rice"', async () => {
     const user = await renderPantry()
     const input = screen.getByLabelText('Add an ingredient')
 
     await user.type(input, '1 egg')
-    expect(await screen.findByRole('option', { name: 'Egg' })).toBeInTheDocument()
+    expect(await screen.findByRole('option', { name: /^Eggs/ })).toBeInTheDocument()
 
     await user.clear(input)
     await user.type(input, 'a cup of rice')
-    expect(await screen.findByRole('option', { name: 'Rice' })).toBeInTheDocument()
+    expect(await screen.findByRole('option', { name: /^Rice/ })).toBeInTheDocument()
   })
 
   it('adds an ingredient as a chip when a suggestion is chosen', async () => {
     const user = await renderPantry()
 
     await user.type(screen.getByLabelText('Add an ingredient'), 'egg')
-    await user.click(await screen.findByRole('option', { name: 'Egg' }))
+    await user.click(await screen.findByRole('option', { name: /^Eggs/ }))
 
-    expect(await screen.findByRole('button', { name: 'Remove Egg' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Remove Eggs' })).toBeInTheDocument()
   })
 
   it('does not suggest an ingredient already in the pantry', async () => {
@@ -55,7 +55,7 @@ describe('PantryEditor', () => {
 
     await user.type(screen.getByLabelText('Add an ingredient'), 'egg')
 
-    await waitFor(() => expect(screen.queryByRole('option', { name: 'Egg' })).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByRole('option', { name: /^Eggs/ })).not.toBeInTheDocument())
   })
 
   it('offers "Did you mean…?" for a misspelling, and Enter alone adds nothing', async () => {
@@ -96,10 +96,10 @@ describe('PantryEditor', () => {
     )
     const user = await renderPantry()
 
-    await user.click(screen.getByRole('button', { name: 'Remove Egg' }))
+    await user.click(screen.getByRole('button', { name: 'Remove Eggs' }))
 
     // Gone immediately, while the request is still in flight.
-    expect(screen.queryByRole('button', { name: 'Remove Egg' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Remove Eggs' })).not.toBeInTheDocument()
     released?.()
   })
 
@@ -110,9 +110,9 @@ describe('PantryEditor', () => {
     )
     const user = await renderPantry()
 
-    await user.click(screen.getByRole('button', { name: 'Remove Egg' }))
+    await user.click(screen.getByRole('button', { name: 'Remove Eggs' }))
 
-    expect(await screen.findByRole('button', { name: 'Remove Egg' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Remove Eggs' })).toBeInTheDocument()
     expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't remove that ingredient")
   })
 

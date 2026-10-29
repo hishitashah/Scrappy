@@ -1,10 +1,10 @@
 """GET /ingredients — the canonical ingredient catalog (spec 10.1)."""
 
 from fastapi import APIRouter, Response
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.auth import CurrentUser, DbSession
-from app.models import Ingredient
+from app.models import Ingredient, RecipeIngredient
 from app.schemas import IngredientResponse
 
 router = APIRouter(tags=["ingredients"])
@@ -20,7 +20,29 @@ def list_ingredients(
     user_id: CurrentUser,
     response: Response,
 ) -> list[IngredientResponse]:
-    """Return every ingredient, ordered by display name."""
+    """Every ingredient that appears in at least one recipe, with its recipe count.
+
+    Ingredients used by no recipe are left out: they can never contribute to a match, so
+    offering one is a trap rather than a choice. The count lets the browser rank the
+    generic ingredient above its rare variants.
+    """
     response.headers["Cache-Control"] = CACHE_CONTROL
-    ingredients = session.scalars(select(Ingredient).order_by(Ingredient.display_name)).all()
-    return [IngredientResponse.model_validate(ingredient) for ingredient in ingredients]
+
+    recipe_count = func.count(RecipeIngredient.recipe_id).label("recipe_count")
+    rows = session.execute(
+        select(Ingredient, recipe_count)
+        .join(RecipeIngredient, RecipeIngredient.ingredient_id == Ingredient.id)
+        .group_by(Ingredient.id)
+        .order_by(Ingredient.display_name)
+    ).all()
+
+    return [
+        IngredientResponse(
+            id=ingredient.id,
+            name=ingredient.name,
+            display_name=ingredient.display_name,
+            aliases=ingredient.aliases,
+            recipe_count=count,
+        )
+        for ingredient, count in rows
+    ]

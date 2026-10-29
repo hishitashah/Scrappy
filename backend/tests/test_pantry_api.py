@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import PantryItem, User
+from app.models import Ingredient, PantryItem, User
 from tests.conftest import OTHER_USER_ID, TEST_USER_ID
 
 
@@ -20,15 +20,31 @@ def give_other_user(session: Session, ingredient_id: int) -> None:
     session.flush()
 
 
-def test_list_ingredients_returns_the_catalog(client: TestClient, catalog: dict[str, int]) -> None:
+def test_list_ingredients_returns_the_catalog(
+    client: TestClient, catalog: dict[str, int], fixture_recipes: dict[str, int]
+) -> None:
     response = client.get("/ingredients")
 
     assert response.status_code == 200
     body = response.json()
-    assert [item["display_name"] for item in body] == ["Egg", "Garlic", "Rice", "Salt", "Water"]
     egg = next(item for item in body if item["name"] == "egg")
     assert egg["aliases"] == ["eggs"]
     assert egg["id"] == catalog["egg"]
+    # Egg is in two of the fixture recipes; the browser ranks suggestions by this.
+    assert egg["recipe_count"] == 2
+
+
+def test_ingredients_used_by_no_recipe_are_left_out(
+    client: TestClient, session: Session, catalog: dict[str, int], fixture_recipes: dict[str, int]
+) -> None:
+    """They can never contribute to a match, so offering one is a trap, not a choice."""
+    session.add(Ingredient(name="unused thing", display_name="Unused Thing"))
+    session.flush()
+
+    names = [item["name"] for item in client.get("/ingredients").json()]
+
+    assert "unused thing" not in names
+    assert "egg" in names
 
 
 def test_list_ingredients_is_cacheable(client: TestClient, catalog: dict[str, int]) -> None:

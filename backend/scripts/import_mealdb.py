@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_engine
 from app.models import Ingredient, PantryItem, Recipe, RecipeIngredient
-from app.normalize import load_aliases, normalize
+from app.normalize import load_aliases, normalize, singularize, strip_accents
 
 BASE_URL = "https://www.themealdb.com/api/json/v1/1"
 SOURCE = "themealdb"
@@ -80,6 +80,11 @@ def _clean(value: Any) -> str | None:
 # TheMealDB numbers its steps inconsistently: some recipes put the number on its own line,
 # others prefix the text with "3." or "0.\t". The UI numbers the steps itself, so any
 # numbering in the data is stripped — otherwise "1" renders as a step of its own.
+# Same shape as app/normalize.py's cleaning, used to ask whether a raw name reaches its
+# canonical form without the alias list.
+_PUNCTUATION_FOR_DISPLAY = re.compile(r"[^a-z0-9 ]+")
+_WHITESPACE_FOR_DISPLAY = re.compile(r"\s+")
+
 _BARE_NUMBER = re.compile(r"^\d+\s*[.):\-]?$")
 # A prefix only counts as numbering when punctuation and whitespace follow, so a step that
 # genuinely opens with a quantity ("2 eggs, beaten") keeps its number.
@@ -183,21 +188,50 @@ def fetch_meals(client: httpx.Client) -> Iterator[dict[str, Any]]:
         yield from payload.get("meals") or []
 
 
+def is_direct_display(display: str, canonical: str) -> bool:
+    """Does this raw name reach the canonical form on its own, without an alias?
+
+    "Onions" normalizes straight to `onion`; "Chopped Onion" only gets there through the
+    alias list. The first is what the ingredient should be called.
+    """
+    cleaned = _PUNCTUATION_FOR_DISPLAY.sub(" ", strip_accents(display).lower())
+    words = _WHITESPACE_FOR_DISPLAY.sub(" ", cleaned).strip().split(" ")
+    return bool(words) and " ".join(words[:-1] + [singularize(words[-1])]) == canonical
+
+
 def upsert_ingredients(
     session: Session, names: Sequence[tuple[str, str]], summary: ImportSummary
 ) -> dict[str, int]:
     """Ensure every (canonical, display) name exists; return canonical name -> id."""
-    existing = {
-        name: ingredient_id
-        for ingredient_id, name in session.execute(select(Ingredient.id, Ingredient.name)).all()
+    rows = {
+        name: (ingredient_id, current_display)
+        for ingredient_id, name, current_display in session.execute(
+            select(Ingredient.id, Ingredient.name, Ingredient.display_name)
+        ).all()
     }
+    existing = {name: ingredient_id for name, (ingredient_id, _) in rows.items()}
+
     for canonical, display in names:
         if canonical in existing:
+            # A row keeps the first display name it was given, which is wrong when that
+            # came through an alias: the generic onion ended up labelled "Chopped Onion"
+            # because that line was imported first. A name that reaches the canonical form
+            # directly is the better label, so take it when one turns up.
+            _, current_display = rows[canonical]
+            if is_direct_display(display, canonical) and not is_direct_display(
+                current_display, canonical
+            ):
+                ingredient = session.get(Ingredient, existing[canonical])
+                if ingredient is not None:
+                    ingredient.display_name = display
+                    rows[canonical] = (ingredient.id, display)
             continue
+
         ingredient = Ingredient(name=canonical, display_name=display)
         session.add(ingredient)
         session.flush()
         existing[canonical] = ingredient.id
+        rows[canonical] = (ingredient.id, display)
         summary.ingredients_created += 1
     return existing
 
