@@ -104,13 +104,10 @@ resource "aws_lambda_function" "api" {
       APP_VERSION        = var.app_version
       DATABASE_URL_PARAM = aws_ssm_parameter.database_url.name
 
-      # Until Cognito ships in M5 the live site has one shared pantry. settings.py refuses
-      # to start in prod without this flag, so turning it on is always deliberate; both it
-      # and AUTH_MODE change at M5 (spec 10.4).
-      AUTH_MODE         = "shared"
-      ALLOW_SHARED_MODE = "true"
-
-      # Known now so the backend branch has them waiting; unused until AUTH_MODE flips.
+      # Real accounts from M5 onward. ALLOW_SHARED_MODE is deliberately gone: it existed
+      # only for the window between the first deploy and login, and leaving it behind would
+      # let a future change quietly serve an unauthenticated API (spec 10.4).
+      AUTH_MODE            = "cognito"
       COGNITO_USER_POOL_ID = aws_cognito_user_pool.users.id
       COGNITO_CLIENT_ID    = aws_cognito_user_pool_client.web.id
     }

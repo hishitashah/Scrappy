@@ -253,8 +253,9 @@ Desktop-only. No mobile breakpoints, no touch-specific interactions, no phone la
 
 | Screen | Route | Contents |
 |---|---|---|
-| Login | Shown whenever signed out | App name and a one-line pitch; Amplify's sign-in, create-account, and forgot-password forms |
-| Home | `/` | Header: menu button (Home, Log out), app name, mascot; pantry editor with the basics hint; ranked results |
+| Landing | `/` when signed out | The public front door (`docs/landing page.png`): the photo in a rounded frame with a forest block behind it, the chef hat, the SCRAPPY wordmark, the one-line pitch, and "Get Started" |
+| Login | `/login` | Amplify's sign-in, create-account and forgot-password forms, themed toward the palette; the heading links back to the landing page |
+| Home | `/` when signed in | Header: menu button (Home, Log out), app name, mascot; pantry editor with the basics hint; ranked results |
 | Recipe intro | `/recipes/:id` | Back link; photo beside a forest card holding the title, category and cuisine; chevron onward to the ingredients |
 | Recipe ingredients | `/recipes/:id/ingredients` | "INGREDIENTS" heading; forest card listing every ingredient with its measurement, owned and missing visually distinct; "Suggest substitutions" for missing ingredients (F7); chevron onward |
 | Recipe steps | `/recipes/:id/steps` | "STEP BY STEP INSTRUCTIONS" heading; forest card with the numbered steps; video and source links |
@@ -557,7 +558,7 @@ When at least one ingredient is missing, the page also shows the "Suggest substi
 
 ### 10.4 F5 + F6 — Accounts, login wall, saved pantry
 
-**Behavior.** Signed-out visitors see only the login screen. After signing in, they see Home with their own pantry. The header has "Sign out."
+**Behavior.** Signed-out visitors see the landing page, which says what Scrappy does and offers one way forward: "Get Started" leads to `/login`. A form that appears before any explanation asks for a commitment before giving a reason, so the login screen is a destination rather than the front door. After signing in, `/` is Home with their own pantry, and the menu has "Log out". Any app URL opened while signed out redirects to the landing page.
 
 **Frontend**
 
@@ -565,7 +566,7 @@ When at least one ingredient is missing, the page also shows the "Suggest substi
   - the user pool ID and app client ID from `VITE_` variables
   - `loginWith: { email: true }`
   - `passwordFormat` matching US-1, so the form validates before submitting
-- `<Authenticator>` wraps the app, which creates the login wall. Email is the only signup field. The `Header` slot shows the app name and pitch.
+- `<Authenticator.Provider>` wraps the router, and `<Authenticator>` renders on the `/login` route. The wall is enforced by routing: `/` shows the landing page when signed out, and every other app route is wrapped in `RequireAuth`, which waits out Amplify's `configuring` state before deciding — otherwise a signed-in user sees the landing page flash on every load. Email is the only signup field.
 - `api/client.ts` exports `apiFetch()`, and every hook uses it. It calls `fetchAuthSession()`, which refreshes expired tokens, and sets `Authorization: Bearer <access token>`.
 - A 401 response triggers `signOut()`.
 - On sign-out, `queryClient.clear()` removes the previous user's cached data.

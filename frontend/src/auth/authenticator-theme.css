@@ -1,0 +1,29 @@
+/* Amplify's Authenticator ships its own look; these variables pull it toward Scrappy's
+   palette (spec section 6). Close to the design rather than identical — the deliberate
+   trade-off for getting sign-up, verification and password reset for free. */
+
+[data-amplify-authenticator] {
+  --amplify-colors-background-primary: #ffffff;
+  --amplify-colors-background-secondary: var(--color-cream);
+  --amplify-colors-brand-primary-10: var(--color-forest-light);
+  --amplify-colors-brand-primary-80: var(--color-forest);
+  --amplify-colors-brand-primary-90: var(--color-forest-dark);
+  --amplify-colors-brand-primary-100: var(--color-forest-dark);
+  --amplify-colors-font-interactive: var(--color-forest);
+  --amplify-components-button-primary-background-color: var(--color-forest);
+  --amplify-components-button-primary-hover-background-color: var(--color-forest-dark);
+  --amplify-components-tabs-item-active-color: var(--color-forest-dark);
+  --amplify-components-tabs-item-focus-color: var(--color-forest-dark);
+  --amplify-components-authenticator-router-border-color: color-mix(in srgb, #636e38 25%, transparent);
+  --amplify-components-fieldcontrol-focus-border-color: var(--color-forest);
+  --amplify-radii-small: 0.75rem;
+  --amplify-radii-medium: 1rem;
+  --amplify-radii-large: 1.75rem;
+  --amplify-fonts-default-variable: 'Poppins', ui-sans-serif, system-ui, sans-serif;
+  --amplify-fonts-default-static: 'Poppins', ui-sans-serif, system-ui, sans-serif;
+}
+
+[data-amplify-authenticator] [data-amplify-router] {
+  border-radius: var(--radius-card);
+  box-shadow: 0 10px 40px color-mix(in srgb, #12140f 8%, transparent);
+}

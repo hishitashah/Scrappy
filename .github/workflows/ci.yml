@@ -189,8 +189,10 @@ jobs:
       - name: Smoke test
         run: |
           API_URL=$(terraform -chdir=infra output -raw api_url)
-          # Steps do not share shell variables; GITHUB_ENV passes it to later steps.
+          # Steps do not share shell variables; GITHUB_ENV passes them to later steps.
           echo "API_URL=$API_URL" >> "$GITHUB_ENV"
+          echo "COGNITO_USER_POOL_ID=$(terraform -chdir=infra output -raw cognito_user_pool_id)" >> "$GITHUB_ENV"
+          echo "COGNITO_CLIENT_ID=$(terraform -chdir=infra output -raw cognito_client_id)" >> "$GITHUB_ENV"
           echo "API: $API_URL"
 
           version=$(curl --fail --silent --retry 5 --retry-delay 3 --retry-all-errors \
@@ -207,6 +209,9 @@ jobs:
         working-directory: frontend
         env:
           VITE_API_URL: ${{ env.API_URL }}
+          # Public by design: the client has no secret, and both ids ship in the bundle.
+          VITE_COGNITO_USER_POOL_ID: ${{ env.COGNITO_USER_POOL_ID }}
+          VITE_COGNITO_CLIENT_ID: ${{ env.COGNITO_CLIENT_ID }}
 
       # Order matters: hashed assets first, so index.html never points at files that have
       # not finished uploading. The assets are immutable (their names change when their
