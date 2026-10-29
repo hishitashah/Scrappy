@@ -95,6 +95,19 @@ def test_an_unexpected_error_returns_a_safe_body_and_logs_the_trace(
         ]
 
 
+def test_the_formatter_includes_a_rejection_reason() -> None:
+    """A log saying only "token rejected" cannot be acted on."""
+    record = logging.LogRecord(
+        "scrappy", logging.WARNING, __file__, 1, "token rejected", None, None
+    )
+    record.reason = "ExpiredSignatureError"
+
+    payload = json.loads(JsonFormatter().format(record))
+
+    assert payload["reason"] == "ExpiredSignatureError"
+    assert "token" not in payload
+
+
 def test_the_formatter_emits_one_json_object_per_line() -> None:
     record = logging.LogRecord("scrappy", logging.INFO, __file__, 1, "request", None, None)
     record.method, record.path, record.status, record.duration_ms = "GET", "/pantry", 200, 12.3

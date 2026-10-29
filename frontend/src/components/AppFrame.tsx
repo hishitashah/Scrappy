@@ -1,8 +1,11 @@
 /** The page chrome from docs/current background.png: cream field, menu button, mascot. */
 
 import { Menu, MenuButton as HeadlessMenuButton, MenuItem, MenuItems } from '@headlessui/react'
+import { useQueryClient } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
+
+import { signOut } from '../auth/session'
 
 export function AppFrame({ children }: { children: ReactNode }) {
   return (
@@ -35,6 +38,28 @@ export function AppFrame({ children }: { children: ReactNode }) {
   )
 }
 
+function LogOutButton() {
+  const queryClient = useQueryClient()
+
+  async function handleLogOut() {
+    await signOut()
+    // Drop every cached query: without this, the next person to sign in on this browser
+    // would briefly see the previous user's pantry before the refetch lands.
+    queryClient.clear()
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void handleLogOut()}
+      className="block w-full px-5 py-2.5 text-left text-ink data-focus:bg-forest-light"
+    >
+      Log out
+    </button>
+  )
+}
+
+
 function AppMenu() {
   return (
     <Menu as="div" className="relative mt-3 w-fit">
@@ -59,15 +84,7 @@ function AppMenu() {
           </Link>
         </MenuItem>
         <MenuItem>
-          {/* Signing out needs Cognito, which arrives in M5 (spec 10.4). */}
-          <button
-            type="button"
-            disabled
-            title="Available once login ships"
-            className="block w-full cursor-not-allowed px-5 py-2.5 text-left text-muted/60"
-          >
-            Log out
-          </button>
+          <LogOutButton />
         </MenuItem>
       </MenuItems>
     </Menu>

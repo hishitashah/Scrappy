@@ -15,6 +15,10 @@
 
   /* The wordmark only; everything else stays Poppins. */
   --font-brand: 'Shadows Into Light', 'Poppins', ui-sans-serif, cursive;
+  /* The landing page's SCRAPPY. Marcellus ships a single 400 weight, so it is set at
+     normal weight — asking for bold would make the browser fake one, which smears the
+     serifs that are the reason for choosing it. */
+  --font-wordmark: 'Marcellus', ui-serif, Georgia, serif;
   --font-display: 'Poppins', ui-sans-serif, system-ui, sans-serif;
   --font-sans: 'Poppins', ui-sans-serif, system-ui, sans-serif;
 

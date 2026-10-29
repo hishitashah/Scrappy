@@ -74,6 +74,10 @@ def test_production_allows_cognito_mode() -> None:
 
 
 def test_cognito_mode_requires_the_pool_settings() -> None:
-    """A half-configured pool is a startup error, not a surprise on the first request."""
+    """A half-configured pool is a startup error, not a surprise on the first request.
+
+    `_env_file=None` keeps the assertion honest: without it the test would read the
+    developer's own backend/.env and pass for the wrong reason.
+    """
     with pytest.raises(ValueError, match="requires COGNITO_USER_POOL_ID"):
-        Settings(env="local", auth_mode="cognito")
+        Settings(_env_file=None, env="local", auth_mode="cognito")

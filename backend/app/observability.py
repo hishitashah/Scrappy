@@ -19,8 +19,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 logger = logging.getLogger("scrappy")
 
-# Keys the formatter copies from the log record when present.
-_EXTRA_FIELDS = ("method", "path", "status", "duration_ms", "user")
+# Keys the formatter copies from the log record when present. "reason" carries why a token
+# was rejected (never the token itself).
+_EXTRA_FIELDS = ("method", "path", "status", "duration_ms", "user", "reason")
 
 
 class JsonFormatter(logging.Formatter):
