@@ -912,6 +912,14 @@ button. `/list` shows the saved list: one row per ingredient, each with a button
 ingredient's search at the user's chosen store in a new tab, and an × to remove it. A store
 picker sits above the list, and "Clear list" empties it.
 
+An ingredient already on the list shows "On your list" in place of the button, read from
+`GET /grocery-list` rather than from component state, so it is still correct after a reload or
+after the item is removed on `/list`.
+
+"Clear list" is a two-step inline confirm: the button becomes "Clear the whole list?" and clears
+on the second press, resetting if focus moves away. No modal and no dependency, and a long list
+isn't lost to a stray click.
+
 **The store catalog** lives in `frontend/src/lib/stores.ts` as a plain table of chains and URL
 templates — no API, no key, no network call from our server:
 
@@ -936,6 +944,9 @@ nothing, never to a broken app.
 - `POST /grocery-list/items` takes `{"ingredient_ids": [int]}` (1–50), validated exactly as
   `POST /pantry/items` is, and returns the updated list. Ids already on the list are ignored.
 - `DELETE /grocery-list/items/{ingredient_id}` returns 204, idempotent.
+- `DELETE /grocery-list` empties the caller's list and returns 204, idempotent. This serves
+  "Clear list": one delete per row from the browser could fail halfway and leave a partly
+  cleared list, for no benefit.
 - `GET /me` and `PATCH /me` read and write `{"preferred_store": "walmart"}` — one of the chain
   keys above, or null.
 
@@ -986,6 +997,7 @@ All endpoints except `/health` require `Authorization: Bearer <Cognito access to
 | GET | `/grocery-list` | — | 200 `[{ingredient_id, display_name, added_at}]` | 401 |
 | POST | `/grocery-list/items` | `{"ingredient_ids": [int]}`, 1–50 IDs | 200 updated list | 401, 422 |
 | DELETE | `/grocery-list/items/{ingredient_id}` | — | 204 | 401 |
+| DELETE | `/grocery-list` | — | 204 (empties the list) | 401 |
 | GET | `/me` | — | 200 `{preferred_store}` | 401 |
 | PATCH | `/me` | `{"preferred_store": str\|null}` | 200 `{preferred_store}` | 401, 422 |
 
@@ -1008,7 +1020,7 @@ Tables are defined as SQLAlchemy ORM models in `models.py`, and Alembic migratio
 | | `display_name` | text, not null | E.g. "Chicken Breast" |
 | | `aliases` | text[], default `{}` | Extra autocomplete terms, e.g. "eggs" |
 | `recipes` | `id` | serial PK | |
-| | `source` | text, not null | `themealdb`; `generated` post-MVP |
+| | `source` | text, not null | `themealdb` for the imported catalog, `generated` for an AI-written recipe (F8) |
 | | `source_id` | text | `idMeal`; unique with `source` |
 | | `title` | text, not null | |
 | | `category`, `area` | text | |

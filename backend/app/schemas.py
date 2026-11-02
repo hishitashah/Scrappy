@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.stores import StoreKey
+
 
 class HealthResponse(BaseModel):
     status: Literal["ok"]
@@ -37,6 +39,41 @@ class PantryItemResponse(BaseModel):
 
 class AddPantryItemsRequest(BaseModel):
     ingredient_ids: list[int] = Field(min_length=1, max_length=50)
+
+
+class GroceryItemResponse(BaseModel):
+    """One ingredient still to buy (spec 10.13).
+
+    The same three fields as `PantryItemResponse` and still its own model: these are two
+    different things in `/openapi.json`, and sharing a name would make the generated docs
+    claim an endpoint returns the other one.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    ingredient_id: int
+    display_name: str
+    added_at: datetime
+
+
+class AddGroceryItemsRequest(BaseModel):
+    ingredient_ids: list[int] = Field(min_length=1, max_length=50)
+
+
+class MeResponse(BaseModel):
+    """The caller's own settings (spec 10.13). Null means no store has been chosen."""
+
+    preferred_store: str | None
+
+
+class UpdateMeRequest(BaseModel):
+    """A store key from `app/stores.py`, or null to clear it.
+
+    Validated here rather than in the handler so that the allowed values are part of the
+    published schema: `/docs` lists them, and a bad key is a 422 before any code runs.
+    """
+
+    preferred_store: StoreKey | None = None
 
 
 class MatchResponse(BaseModel):

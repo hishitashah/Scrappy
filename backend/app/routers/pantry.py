@@ -4,13 +4,14 @@ Every query is filtered by the caller's user id, which is what stops one user fr
 reading or changing another's pantry.
 """
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, status
 from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.auth import CurrentUser, DbSession
-from app.models import Ingredient, PantryItem
+from app.catalog import assert_known_ingredients
+from app.models import GroceryItem, Ingredient, PantryItem
 from app.schemas import AddPantryItemsRequest, PantryItemResponse
 
 router = APIRouter(tags=["pantry"])
@@ -48,19 +49,19 @@ def add_pantry_items(
     Only catalog ingredients may be added (spec section 4), so unknown ids are rejected
     rather than stored. Ids already in the pantry are ignored.
     """
-    requested = list(dict.fromkeys(payload.ingredient_ids))
-    known = set(session.scalars(select(Ingredient.id).where(Ingredient.id.in_(requested))).all())
-    unknown = [ingredient_id for ingredient_id in requested if ingredient_id not in known]
-    if unknown:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={"message": "Unknown ingredient ids", "unknown_ingredient_ids": unknown},
-        )
+    requested = assert_known_ingredients(session, payload.ingredient_ids)
 
     session.execute(
         insert(PantryItem)
         .values([{"user_id": user_id, "ingredient_id": i} for i in requested])
         .on_conflict_do_nothing()
+    )
+    # You bought it, so it is no longer something to buy: the same transaction takes it off
+    # the grocery list, which is what stops the two from ever disagreeing (spec 10.13).
+    session.execute(
+        delete(GroceryItem).where(
+            GroceryItem.user_id == user_id, GroceryItem.ingredient_id.in_(requested)
+        )
     )
     session.commit()
     return read_pantry(session, user_id)

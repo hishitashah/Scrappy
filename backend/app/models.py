@@ -90,6 +90,9 @@ class User(Base):
 
     # The Cognito `sub`, or "shared-user" before login ships (spec 10.4).
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    # A supermarket chain key from app/stores.py, e.g. "walmart". Null until one is picked,
+    # which the grocery list shows as "Pick a store" rather than a dead link (spec 10.13).
+    preferred_store: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -97,6 +100,25 @@ class PantryItem(Base):
     """One ingredient a user has. There is no quantity column, by design (spec section 4)."""
 
     __tablename__ = "pantry_items"
+
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    ingredient_id: Mapped[int] = mapped_column(ForeignKey("ingredients.id"), primary_key=True)
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class GroceryItem(Base):
+    """One ingredient a user still needs to buy (F9, spec 10.13).
+
+    The same shape as `PantryItem` and deliberately a separate table: an ingredient is
+    either something you have or something you need, and adding it to the pantry removes
+    it from here in the same transaction so the two can never disagree.
+
+    No quantity column, for the reason the pantry has none (spec section 4).
+    """
+
+    __tablename__ = "grocery_items"
 
     user_id: Mapped[str] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
