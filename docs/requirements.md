@@ -129,7 +129,7 @@ Two consequences are accepted. Links land on a **search results page, not a prod
 
 **AI spend is capped in code, not just watched.** The Anthropic API is priced per token, which breaks the flat $0/month rule, so the budget is enforced rather than hoped for: a usage ledger records the real token counts and cost of every call, both AI endpoints return 503 once the month reaches $5, each user gets 10 substitution requests and 3 generations a day, substitution results are cached so a repeat question is free, `AI_ENABLED=false` turns both features off without a deploy, and the API key carries a $5 monthly limit set in the Anthropic Console as an independent backstop. The cap is a hard ceiling, and the expected bill at demo traffic is well under a dollar.
 
-**Claude Opus 5, called only from the backend.** Substitutions are judgment calls a reviewer will poke at, so quality matters more than the fraction of a cent saved by a smaller model. Requests use structured outputs, so responses parse into typed models instead of being scraped from prose, and `effort: "low"`, since both tasks are short and bounded. The API key lives in SSM Parameter Store and is read by Lambda; it never reaches the browser, and no `VITE_` variable is ever involved.
+**Claude Opus 5.5, called only from the backend.** Substitutions are judgment calls a reviewer will poke at, so quality matters more than the fraction of a cent saved by a smaller model. Requests use structured outputs, so responses parse into typed models instead of being scraped from prose, and `effort: "low"`, since both tasks are short and bounded. The API key lives in SSM Parameter Store and is read by Lambda; it never reaches the browser, and no `VITE_` variable is ever involved.
 
 **Generated recipes belong to one user.** A recipe created by F8 is stored with `source='generated'` and the id of the user who asked for it. Matching excludes generated recipes that belong to anyone else, so one user's AI experiment never appears in another user's results, while the imported TheMealDB catalog stays shared by everyone.
 
@@ -593,7 +593,7 @@ When at least one ingredient is missing, the page also shows the "Suggest substi
 - It skips token checks and returns the fixed user `shared-user`, upserting that row the same
   way cognito mode upserts the `sub`, since pantry rows reference `users.id`.
 - This mode is used locally before Cognito exists, and briefly on the live site between the first deploy and the login milestone.
-- Settings validation refuses `shared` mode when `ENV=prod` unless `ALLOW_SHARED_MODE=true` is set. That flag is removed when login ships.
+- Settings validation refuses `shared` mode when `ENV=prod` unless `ALLOW_SHARED_MODE=true` is set. That flag was removed from the Lambda at M5, so production cannot be put into shared mode without a deliberate infrastructure change.
 
 **AWS (`auth.tf`)**
 
@@ -1077,8 +1077,8 @@ Note: `pantry_items` has no quantity column, by design (see section 4).
 | `ENV` | `local` | `test` | `prod` |
 | `DATABASE_URL` | Docker Postgres, from `.env` | Service container | Not set |
 | `DATABASE_URL_PARAM` | — | — | `/scrappy/prod/database_url`, read from SSM once per cold start |
-| `AUTH_MODE` | `shared` until login ships, then `cognito` | Overridden in tests | `shared` until login ships, then `cognito` |
-| `ALLOW_SHARED_MODE` | — | — | `true` only until login ships |
+| `AUTH_MODE` | `cognito` | Overridden per test | `cognito` |
+| `ALLOW_SHARED_MODE` | — | — | Unset. Removed from the Lambda at M5; `shared` mode now exists only for tests and for driving the API by hand locally |
 | `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID` | From Terraform outputs | — | Set by Terraform |
 | `APP_VERSION` | `local` | — | Commit SHA |
 
@@ -1130,8 +1130,12 @@ substitution request costs **0.6¢**. That is measured, not estimated: the first
 October 29, 2026, used 692 input and 148 output tokens for a two-ingredient request — 0.57¢.
 An earlier estimate of 1.1¢ assumed far more reasoning than `effort: "low"` actually spends.
 
-A generated recipe (F8) is still an estimate at about 2.5¢, since it has to write a whole
-recipe rather than two lines; it will be measured the same way when F8 ships.
+A generated recipe (F8) is **still an estimate at about 2.5¢**, since it has to write a whole
+recipe rather than two lines. F8 shipped at M7 and the figure has not been measured yet: the
+local verification runs exercised the path but the number was never read out of the ledger.
+It should be taken from `ai_monthly_usage` after the first production generation and recorded
+here, as the substitution figure was — that one was estimated at 1.1¢ and measured at 0.6¢,
+so this one is likely wrong too.
 
 So $5 covers roughly 800 substitutions, or 200 generated recipes, in a month — orders of
 magnitude more than a portfolio demo will use. The cap exists for the runaway case, not the
@@ -1168,6 +1172,13 @@ Console spend limit above.
 | M8 | Nov 18 | F9 grocery list: `grocery_items`, `preferred_store`, endpoints, list page, store picker | A missing ingredient can be added to the list and opened at the user's store |
 | M9 | Nov 22 | E6 README; fixes | The MVP definition of done (3.4) is met |
 
+**M9 status.** The README is complete except the demo GIF (E6 item 3), which is deferred to a
+follow-up commit. Two things are measured rather than assumed in it: 367 tests (255 pytest,
+112 Vitest) and 97% backend coverage. Still outstanding at the time of writing: the demo GIF,
+the measured cost of a generated recipe (section 14), and a first production AI call — the
+`ai_monthly_usage` ledger on Neon has never recorded one, so M6's and M7's exit criteria are
+proven locally but not live.
+
 The ship date has moved twice, both times to take on scope rather than to recover from slippage:
 October 28 to **November 11** on September 26, 2026, when AI substitutions and recipe generation
 were promoted from the backlog into the MVP; and to **November 22** on October 4, 2026, when the
@@ -1186,9 +1197,24 @@ Never cut deployment, login, backend tests, or the README.
 
 ## 16. Open questions
 
-- **Recipe count:** TheMealDB has several hundred recipes. Evaluate match quality after M1; a second source is a post-MVP option.
-- **TheMealDB terms:** the free test key covers development and educational use. Confirm whether a public deployment needs supporter status before M4.
-- **Shared mode:** between M4 and M5, all visitors to the live site share one pantry. Accepted.
+All three are now closed. They are kept with their answers rather than deleted, so the
+reasoning stays readable alongside the decision.
+
+- **Recipe count — resolved.** The imported catalog is large enough for the MVP: a pantry of
+  four or five common ingredients reliably clears the 50% floor, and the empty state now has
+  AI generation (F8) behind it rather than being a dead end. A second source stays post-MVP.
+- **TheMealDB terms — resolved before M4.** The free test key covers development and
+  educational use, which a portfolio project is. It is also only ever contacted by
+  `scripts/import_mealdb.py`, never by the running app, so the deployment makes no requests
+  to it at all.
+- **Shared mode — closed at M5.** Login shipped, every route verifies a Cognito token, and
+  `ALLOW_SHARED_MODE` was removed from the Lambda. `shared` mode survives only for tests and
+  for driving the API by hand locally.
+
+**Still open, deliberately:** the 50% match floor is a judgement rather than a measurement.
+It was set so that a result is a suggestion and not a shopping list, and no one has yet
+checked whether 40% or 60% would serve users better. Doing so needs real usage data, which a
+portfolio project does not have.
 
 ---
 
