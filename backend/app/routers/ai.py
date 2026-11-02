@@ -211,7 +211,7 @@ def generate_recipe(
     # but water is still empty.
     if not pantry_rows:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Add some ingredients first",
         )
 

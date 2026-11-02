@@ -1,4 +1,4 @@
-# Scrappy - AI Powered Recipe Generator
+# Scrappy
 
 [![CI](https://github.com/hishitashah/Scrappy/actions/workflows/ci.yml/badge.svg)](https://github.com/hishitashah/Scrappy/actions/workflows/ci.yml)
 
@@ -6,7 +6,34 @@
 
 Scrappy is a desktop web app that ranks recipes by how many of their ingredients you already have. You type in your pantry, and every result tells you exactly what's missing: *"You have 3 of 7 — missing oil, salt, soy sauce, spring onion."*
 
+Two features call **Claude Opus 5.5** from the backend: it suggests a substitute for each ingredient you're missing, and when nothing in the catalog matches, it writes a recipe from exactly what you have. Both are behind six guardrails and a hard **$5/month** spend cap. Ranking itself is deliberately *not* AI — see [Key decisions](#key-decisions).
+
 Most recipe sites start from a recipe and send you shopping. Scrappy works backwards from what you've got.
+
+## Live demo
+
+**[SCRAPPY_LIVE_URL]**
+
+It needs an account (email plus a verification code) and it's **desktop-only** — there's no mobile layout, by design. A cold start against a suspended database takes about five seconds; after that, requests are ~0.2s.
+
+<!-- TODO(M9): record docs/demo.gif — ~20s, empty pantry → type four ingredients →
+     results reorder → open a recipe → "Suggest substitutions" — then uncomment:
+![Scrappy in action](docs/demo.gif)
+-->
+
+## Features
+
+| | Feature | What it does |
+|---|---|---|
+| F1 | Pantry editing | Add ingredients by typing, with autocomplete over the catalog and a "Did you mean…?" fallback; remove one with a click |
+| F2 | Recipe matching | Recipes ranked by the percentage of their ingredients you have, in a single SQL query |
+| F3 | Match transparency | Every result shows "You have 3 of 7" and names what's missing |
+| F4 | Recipe detail | Three paged screens: photo and tags, ingredients with measurements and owned/missing marks, then numbered steps with video and source links |
+| F5 | Accounts | Sign up, log in, log out, reset password. The whole app requires login |
+| F6 | Saved pantry | Your pantry lives in the database and loads on sign-in |
+| **F7** | **AI substitutions** 🤖 | For a recipe's missing ingredients, Claude suggests what to use instead, preferring things already in your pantry |
+| **F8** | **AI recipe generation** 🤖 | When nothing matches, Claude writes a recipe from your exact pantry and saves it to your account, labelled and visible only to you |
+| F9 | Grocery list | Add missing ingredients to a saved list, then open each one at your chosen supermarket's search |
 
 ## Architecture
 
@@ -21,6 +48,8 @@ flowchart LR
     UI -- "API calls + access token" --> URL[Lambda Function URL]
     URL --> API[FastAPI on Lambda]
     API --> DB[(Neon Postgres)]
+    API -- "on a button press only" --> Claude[Anthropic API]
+    API -- "API key" --> SSM[(SSM Parameter Store)]
 
     Import[Import script, run once] --> MealDB[TheMealDB API]
     Import --> DB
@@ -31,8 +60,27 @@ flowchart LR
 
 - The **frontend** is a static React build served from a private S3 bucket through CloudFront.
 - The **API** is FastAPI running on AWS Lambda (via Mangum), reached through a Lambda Function URL. It verifies the Cognito access token on every request.
-- The **database** is Postgres on Neon's free plan. The recipe catalog is imported from TheMealDB once, so browsing never calls a third-party API. The one runtime exception is Claude, called from the backend for substitutions and recipe generation, on an explicit button press.
+- The **database** is Postgres on Neon's free plan. The recipe catalog is imported from TheMealDB once, so browsing never calls a third-party API.
+- **Anthropic is the only runtime third-party call**, from the backend only, on an explicit button press — never on page load, and never from the browser. The API key lives in SSM Parameter Store and is read once per cold start.
 - **Everything on AWS is defined in Terraform** and deployed by GitHub Actions on every merge to `main`.
+
+## Key decisions
+
+**Matching is a SQL query, not AI: counting for facts, models for judgment.** Ranking recipes by ingredient overlap is deterministic set math — fast, free, explainable, and reproducible. A model would be slower, costlier, and non-deterministic, and the have/need counts the UI depends on would stop coming from one query. AI is reserved for the genuinely fuzzy calls, where there is no single right answer: what to substitute for a missing ingredient, and what to cook when nothing matches. Everything the model returns is validated against a schema, and a refusal or a truncated answer is rejected rather than shown half-complete.
+
+**AI spend is capped in code, not just watched.** A usage ledger records the real token counts from every response, and the cap is checked against it before each call. Cost is recomputed from running token totals rather than accumulated per call — one substitution costs under a cent, so rounding each one to an integer would lose a tenth of the spend every time and a cap fed by rounded-down pennies could never fire.
+
+**Hosting has no fixed monthly cost.** No RDS, no NAT Gateway, no load balancer, no EC2, no public IPv4, no Route 53 hosted zone, no Secrets Manager. Lambda runs outside a VPC and reaches Neon over TLS, which is what removes the NAT Gateway — the single largest hidden cost in a naïve AWS setup.
+
+**Recipe data is imported once; browsing never calls a third-party API.** A script copies TheMealDB into Scrappy's own Postgres. After that, pantry editing, matching and recipe detail are served entirely from our own database: no rate limits, no per-search cost, and the matching logic is ours and testable.
+
+**Ingredient names are parsed; quantities are not stored.** "2 Large Eggs" and "eggs" both resolve to the same catalog row, because a pantry item and a recipe line have to point at the same ingredient for matching to be an overlap count. Quantities are displayed exactly as written and never compared — a quantity-aware pantry would need a unit-conversion layer and is its own project.
+
+**The grocery list links out; it never integrates.** Each row opens that ingredient's search at a supermarket you pick, in a new tab with `rel="noreferrer"`. No retailer API, no key, no cart, no prices, and no call from our server. A chain that changes its URL format degrades to a search that finds nothing, never to a broken app.
+
+**Everything AI-generated says so.** Suggestions sit in a visually distinct panel, generated recipes carry an "AI-generated" badge wherever they appear, and a generated recipe belongs to one user — matching hides it from everyone else.
+
+**Login is required everywhere, and the token is checked on every route.** The access token's RS256 signature is verified against the pool's JWKS, along with `exp`, `iss`, `client_id`, and `token_use == "access"` — so an ID token can't be used as API authorization.
 
 ## Tech stack
 
@@ -41,7 +89,7 @@ flowchart LR
 | Frontend | React 19, TypeScript (strict), Vite, React Router, TanStack Query 5, Tailwind CSS 4, Headless UI |
 | Auth UI | Amplify UI `Authenticator` + `aws-amplify` 6 |
 | API | Python 3.13, FastAPI, Pydantic 2, pydantic-settings, Mangum |
-| AI features | `anthropic` SDK, Claude Opus 5.5, backend only, with a hard $5/month spend cap |
+| AI features | `anthropic` SDK, Claude Opus 5.5 with structured outputs, backend only, hard $5/month cap |
 | Database | PostgreSQL 18, SQLAlchemy 2, psycopg 3, Alembic |
 | Auth | Amazon Cognito, PyJWT |
 | Hosting | AWS Lambda, S3, CloudFront, SSM Parameter Store, CloudWatch; Neon Postgres |
@@ -51,32 +99,23 @@ flowchart LR
 
 ## Testing
 
-**189 tests**, written alongside each feature rather than after it.
+**367 tests** — 255 pytest, 112 Vitest — written alongside each feature rather than after it.
 
-| Area | Tests | What they cover |
-|---|---:|---|
-| Ingredient normalization | 62 | Case, spacing, punctuation, plurals, accents, the `inflect` exceptions, aliases, idempotency |
-| TheMealDB import | 16 | Parsing, measure pairing, step numbering, duplicate merging, idempotent re-runs, alias folding |
-| Matching | 14 | The worked example from the spec, the 50% floor, assumed staples, per-user visibility of generated recipes |
-| Pantry API | 10 | Duplicate adds, unknown IDs, idempotent delete, one user can't touch another's pantry |
-| Recipes API | 9 | Detail payload, ingredient order, `owned` flags, 404s |
-| Schema | 7 | Unique constraints, cascade deletes, JSON round-trips |
-| Auth | 6 | Shared mode, the `shared-user` upsert, production refusing an unauthenticated API |
-| Assumed staples | 3 | Water is the only one, and it resolves against the catalog |
-| Health and logging | 7 | `/health`, one JSON log line per request, and the safe 500 body |
-| Configuration | 7 | DATABASE_URL vs the SSM lookup, read once per cold start, and the Neon engine options |
-| **Backend total** | **141** | pytest against a real Postgres 18 database |
-| Browser-side filtering | 16 | Quantity stripping, prefix ranking, aliases, "Did you mean…?", assumed staples |
-| Recipe pages | 14 | All three paged screens, navigation, links, 404 on every route |
-| Pantry editor | 10 | Autocomplete, optimistic removal and rollback, both no-match states |
-| Results list | 6 | Have/total counts, missing names, both empty states, error recovery |
-| Error boundary | 2 | A crash shows a reload panel instead of a blank page |
-| **Frontend total** | **48** | Vitest and React Testing Library, with MSW mocking the API |
+| Backend (pytest) | Tests | | Frontend (Vitest) | Tests |
+|---|---:|---|---|---:|
+| Ingredient normalization | 62 | | Ingredient filter & store URLs | 24 |
+| AI features & spend guardrails | 58 | | Grocery list & add-to-list | 20 |
+| API endpoints | 50 | | Recipe pages | 19 |
+| Config, logging & schema | 33 | | Pantry editor & results | 17 |
+| Matching & catalog import | 32 | | AI panels | 16 |
+| Auth & token rejection | 20 | | Routing, HTTP & errors | 16 |
+| **Total** | **255** | | **Total** | **112** |
 
-**Backend tests run against real Postgres**, not an in-memory stand-in, because the matching
-query uses Postgres-specific SQL. Each test runs inside a transaction that is rolled back, so
-tests never see each other's rows. **Frontend tests never reach the network:** MSW intercepts
-every request, so component tests are fast and deterministic.
+**11 of the auth tests are invalid-token scenarios**: expired, wrong user pool, wrong app client, bad signature, an ID token used as an access token, a missing or malformed `Authorization` header, and a token missing required claims.
+
+**Backend tests run against real Postgres**, not an in-memory stand-in, because the matching query uses Postgres-specific SQL. Each test runs inside a transaction that is rolled back, so tests never see each other's rows. **Frontend tests never reach the network:** MSW intercepts every request, with `onUnhandledRequest: 'error'` so an accidental call fails loudly instead of hanging. **No test calls Anthropic** — the client is injected, and tests supply their own.
+
+Backend coverage is **97%**, reported but not enforced — a number to watch, not a threshold to game.
 
 **CI** runs on every pull request and every push to `main`, in three parallel jobs:
 
@@ -86,23 +125,31 @@ every request, so component tests are fast and deterministic.
 | **frontend** | `npm run lint`, `npm run typecheck`, `npm test`, `npm run build` |
 | **infra** | `terraform fmt -check -recursive`, `init -backend=false`, `validate` |
 
-`main` is protected: a pull request cannot merge until all three pass. The infra job needs no
-AWS credentials, because `-backend=false` skips the remote state entirely.
+`main` is protected: a pull request cannot merge until all three pass. The infra job needs no AWS credentials, because `-backend=false` skips the remote state entirely.
 
 **Merging to `main` deploys**, in a fourth job that runs only after those three pass:
 
-1. Assume an AWS role through GitHub's OIDC provider — **no AWS keys are stored in GitHub**,
-   and the trust policy only accepts workflows running on `main` in this repository.
+1. Assume an AWS role through GitHub's OIDC provider — **no AWS keys are stored in GitHub**, and the trust policy only accepts workflows running on `main` in this repository.
 2. Build the Lambda package with the same script used locally.
 3. Run database migrations against Neon, before the new code goes live.
 4. `terraform apply`, which ships the new Lambda code along with any infrastructure change.
-5. Smoke-test `/health` and assert the reported version equals the deployed commit — this is
-   what catches "the deploy succeeded but the old code is still serving".
-6. Upload the frontend: hashed assets first with a one-year cache, then `index.html` with
-   `no-cache`, then invalidate CloudFront.
+5. Smoke-test `/health` and assert the reported version equals the deployed commit — this is what catches "the deploy succeeded but the old code is still serving".
+6. Upload the frontend: hashed assets first with a one-year cache, then `index.html` with `no-cache`, then invalidate CloudFront.
 
-Backend coverage is currently **92%**, reported but not enforced — a number to watch, not a
-threshold to game.
+## Running cost
+
+**Fixed monthly cost: $0.** The rule is that no resource may charge for merely existing, which rules out RDS, NAT Gateway, load balancers, EC2, public IPv4 addresses, Route 53 hosted zones and Secrets Manager. What's left runs inside free tiers: Lambda (1M requests/month), CloudFront (1 TB), Cognito (10,000 monthly active users), Neon (100 compute-hours, suspends after 5 minutes idle), and GitHub Actions (free on public repos). S3 storage for the frontend is fractions of a cent, and CloudWatch log retention is capped at 14 days.
+
+**The one variable cost is the Anthropic API, capped at $5/month** by six guardrails:
+
+1. **Usage ledger** — every call records its real token counts and cost.
+2. **Monthly cap** — at 500¢, both AI endpoints return 503.
+3. **Per-user daily limits** — 10 substitution requests and 3 generated recipes per user per day (429).
+4. **Cache** — a repeat substitution request for the same recipe and pantry costs nothing.
+5. **Kill switch** — `AI_ENABLED=false` disables both features without a deploy.
+6. **Console limit** — a $5 spend limit on the API key itself, so a bug in our own accounting still can't produce a surprise bill.
+
+A substitution costs **0.6¢**, measured rather than estimated: the first real call used 692 input and 148 output tokens, or 0.57¢. So $5 covers roughly 800 substitutions — orders of magnitude more than a portfolio demo will use. The cap exists for the runaway case, not the expected one. Every call is triggered by an explicit button press; nothing spends money on page load.
 
 ## Local setup
 
@@ -143,11 +190,27 @@ npm test           # component and unit tests
 npm run lint && npm run typecheck && npm run build
 ```
 
-The `--legacy-peer-deps` flag works around a peer-resolution crash in npm 10.9.2
-(`Cannot read properties of null (reading 'edgesOut')`). npm 12 fixes it, and `npm ci`,
-which CI uses, is unaffected.
+The AI features stay off locally until you set `AI_ENABLED=true` and an `ANTHROPIC_API_KEY` in `backend/.env`. Everything else — pantry, matching, recipes, the grocery list — works without a key, and the test suite never needs one.
+
+The `--legacy-peer-deps` flag works around a peer-resolution crash in npm 10.9.2 (`Cannot read properties of null (reading 'edgesOut')`). npm 12 fixes it, and `npm ci`, which CI uses, is unaffected.
 
 Stop the database with `docker compose down`; its data is kept in a Docker volume.
+
+## Roadmap
+
+Deliberately out of the MVP, in rough order of appeal:
+
+- **Favorites and cook history** — mark a recipe cooked, find the ones you liked again.
+- **A multi-recipe shopping list** — everything missing across several chosen meals, merged and copyable as plain text, so one trip covers the week.
+- **Dietary filters** and **expiry nudges**, the latter using `pantry_items.added_at`, which is already stored.
+- **Personalization** from history and favorites.
+
+Two shortcuts worth naming rather than leaving to be found:
+
+- **The CI deploy role has `AdministratorAccess`**, with a deliberately narrow trust policy — only this repo, only `main`, via OIDC. The Lambda's own runtime role *is* least-privilege (CloudWatch Logs plus `ssm:GetParameter` on two named parameters). Tightening the deploy role is tracked post-MVP.
+- **No mobile layout.** The app assumes a wide screen, a mouse and a keyboard. A phone layout is a redesign, not a breakpoint, and the MVP chose depth over reach.
+
+A quantity-aware pantry, if ever pursued, needs a unit-conversion layer and should be scoped as its own project rather than added to this one.
 
 ## License
 

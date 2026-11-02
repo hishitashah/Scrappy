@@ -40,7 +40,7 @@ def assert_known_ingredients(session: Session, ingredient_ids: Sequence[int]) ->
     unknown = [ingredient_id for ingredient_id in requested if ingredient_id not in known]
     if unknown:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={"message": "Unknown ingredient ids", "unknown_ingredient_ids": unknown},
         )
     return requested
