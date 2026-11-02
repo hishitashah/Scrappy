@@ -1,34 +1,48 @@
-"""POST /recipes/{id}/substitutions — AI substitutions (F7, spec 10.11).
+"""The two endpoints that can spend money (F7 and F8, spec 10.11 and 10.12).
 
-The only endpoint in Scrappy that can spend money, so the order of operations below is the
-feature's whole safety story:
+Both live here rather than in separate files, because the order of operations below is the
+features' whole safety story and it is worth being able to read it in one place:
 
 1. `AI_ENABLED` — an operator pause means paused, before anything else happens.
-2. Nothing missing — answer `[]` without asking a model what to substitute for nothing.
-3. The cache — an answer already paid for, which costs nothing and counts nothing.
-4. The monthly cap, then the caller's daily count.
+2. A free, honest answer where one exists — nothing missing to substitute for, or an empty
+   pantry to cook from — without asking a model.
+3. The cache, for substitutions: an answer already paid for costs nothing and counts
+   nothing. Generation has none by design, because pressing the button again means "give
+   me a different recipe" (spec 10.12).
+4. The monthly cap, then the caller's daily count for that feature.
 5. Only then, the call.
 
-Steps 2 and 3 are the ones that actually keep the bill small in normal use; steps 1, 4 and
-5 are what make a worst case survivable.
+Steps 2 and 3 are what keep the bill small in normal use; steps 1, 4 and 5 are what make a
+worst case survivable.
 """
 
 import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy import select
 
-from app.ai import AiUnavailable, SubstitutionClient, get_substitution_client
+from app.ai import (
+    AiUnavailable,
+    GenerationClient,
+    SubstitutionClient,
+    get_generation_client,
+    get_substitution_client,
+)
 from app.auth import CurrentUser, DbSession
-from app.models import Ingredient, PantryItem, RecipeIngredient
-from app.normalize import normalize
-from app.routers.recipes import _visible_recipe
-from app.schemas import SubstitutionResponse, SubstitutionsResponse
+from app.catalog import ensure_ingredient_ids, find_ingredient_ids
+from app.models import Ingredient, PantryItem, Recipe, RecipeIngredient
+from app.routers.recipes import (
+    GENERATED,
+    _visible_recipe,
+    owned_ingredient_ids,
+    recipe_ingredients,
+)
+from app.schemas import RecipeDetailResponse, SubstitutionResponse, SubstitutionsResponse
 from app.settings import Settings, get_settings
 from app.staples import staple_ingredient_ids
 from app.usage import (
+    GENERATION,
     SUBSTITUTIONS,
     Allowance,
     cached_payload,
@@ -44,39 +58,12 @@ router = APIRouter(tags=["ai"])
 
 AppSettings = Annotated[Settings, Depends(get_settings)]
 AiClient = Annotated[SubstitutionClient | None, Depends(get_substitution_client)]
+AiGenerator = Annotated[GenerationClient | None, Depends(get_generation_client)]
 
 PAUSED = HTTPException(
     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
     detail="AI features are paused",
 )
-
-
-def _in_pantry_ids(session: Session, suggestions: list[str]) -> dict[str, int]:
-    """Map each suggested name to a catalog ingredient id, where one exists.
-
-    The model writes "plain yogurt"; the catalog holds "yogurt". `normalize` is the same
-    function the import and the pantry use, so a suggestion is matched the way a typed
-    ingredient would be — including its aliases.
-    """
-    wanted = {normalize(name): name for name in suggestions}
-    if not wanted:
-        return {}
-
-    rows = session.execute(
-        select(Ingredient.id, Ingredient.name, Ingredient.aliases).where(
-            or_(
-                Ingredient.name.in_(wanted),
-                Ingredient.aliases.overlap(list(wanted)),
-            )
-        )
-    ).all()
-
-    found: dict[str, int] = {}
-    for row in rows:
-        for key in (row.name, *row.aliases):
-            if key in wanted:
-                found[wanted[key]] = row.id
-    return found
 
 
 @router.post("/recipes/{recipe_id}/substitutions")
@@ -181,7 +168,7 @@ def suggest_substitutions(
         if suggestion.missing_ingredient.casefold() in by_display
     ]
 
-    catalog_ids = _in_pantry_ids(session, [suggestion.suggestion for suggestion in kept])
+    catalog_ids = find_ingredient_ids(session, [suggestion.suggestion for suggestion in kept])
     payload: list[dict[str, object]] = [
         {
             "missing_ingredient": by_display[suggestion.missing_ingredient.casefold()],
@@ -198,3 +185,122 @@ def suggest_substitutions(
     session.commit()
 
     return SubstitutionsResponse(suggestions=[SubstitutionResponse(**item) for item in payload])
+
+
+@router.post("/recipes/generate")
+def generate_recipe(
+    session: DbSession,
+    user_id: CurrentUser,
+    settings: AppSettings,
+    client: AiGenerator,
+) -> RecipeDetailResponse:
+    """Write a recipe from the caller's pantry and save it to their account (spec 10.12)."""
+    if not settings.ai_enabled:
+        raise PAUSED
+
+    pantry_rows = session.execute(
+        select(Ingredient.id, Ingredient.display_name)
+        .join(PantryItem, PantryItem.ingredient_id == Ingredient.id)
+        .where(PantryItem.user_id == user_id)
+        .order_by(Ingredient.display_name)
+    ).all()
+
+    # Nothing to cook from, so nothing to ask. Checked before any guardrail, because a
+    # request that can't be answered shouldn't consume today's allowance. Pantry rows
+    # only: water is assumed everywhere (spec section 4), but a kitchen holding nothing
+    # but water is still empty.
+    if not pantry_rows:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Add some ingredients first",
+        )
+
+    allowance = check_allowance(session, user_id, GENERATION, settings)
+    if allowance is Allowance.MONTHLY_CAP:
+        raise PAUSED
+    if allowance is Allowance.DAILY_LIMIT:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Daily recipe limit reached",
+        )
+    if client is None:
+        logger.error("ai enabled with no client available")
+        raise PAUSED
+
+    pantry = [row.display_name for row in pantry_rows]
+
+    try:
+        result = client.generate(pantry=pantry)
+    except AiUnavailable as unusable:
+        # Billed all the same, so the ledger has to see it (see the F7 handler above).
+        if unusable.input_tokens or unusable.output_tokens:
+            record_call(
+                session,
+                user_id,
+                GENERATION,
+                unusable.input_tokens,
+                unusable.output_tokens,
+                settings,
+            )
+            session.commit()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="The model did not return a usable answer",
+        ) from None
+
+    record_call(session, user_id, GENERATION, result.input_tokens, result.output_tokens, settings)
+
+    # Every line is saved, including an ingredient the cook doesn't actually have: the
+    # prompt asks for the pantry and nothing else, but models add salt anyway. Keeping it
+    # means the recipe reports "you have 7 of 8" and the method still makes sense.
+    # Dropping it would promise 100% while orphaning "season with salt" in step 3.
+    lines = result.recipe.lines
+    ingredient_ids = ensure_ingredient_ids(session, [line.display_name for line in lines])
+
+    recipe = Recipe(
+        source=GENERATED,
+        # Null, so the unique constraint on (source, source_id) doesn't bind: Postgres
+        # treats nulls as distinct, and every generated recipe is its own thing.
+        source_id=None,
+        title=result.recipe.title,
+        steps=list(result.recipe.steps),
+        created_by=user_id,
+    )
+    session.add(recipe)
+    session.flush()
+
+    # Deduplicated on the way in: (recipe_id, ingredient_id) is the primary key, and two
+    # lines of one recipe can normalize to the same ingredient ("Eggs" and "egg").
+    seen: set[int] = set()
+    for position, line in enumerate(lines):
+        # Absent when the name was punctuation or blank, which is no ingredient at all.
+        ingredient_id = ingredient_ids.get(line.display_name)
+        if ingredient_id is None or ingredient_id in seen:
+            continue
+        seen.add(ingredient_id)
+        session.add(
+            RecipeIngredient(
+                recipe_id=recipe.id,
+                ingredient_id=ingredient_id,
+                measure=line.measure,
+                position=position,
+            )
+        )
+
+    # Money spent, recipe written: both are discarded without this (see the F7 handler).
+    session.commit()
+
+    return RecipeDetailResponse(
+        id=recipe.id,
+        title=recipe.title,
+        # A generated recipe has no category, cuisine, photo, video or source, and none are
+        # invented: the page shows an "AI-generated" badge where the tags would be.
+        category=None,
+        area=None,
+        image_url=None,
+        youtube_url=None,
+        source_url=None,
+        steps=recipe.steps,
+        generated=True,
+        ingredients=recipe_ingredients(session, recipe.id, owned_ingredient_ids(session, user_id)),
+    )
