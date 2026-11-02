@@ -23,6 +23,8 @@ export interface Match {
   total: number
   match: number
   missing: string[]
+  /** True for one of your own AI-written recipes (F8), which the card labels. */
+  generated: boolean
 }
 
 export interface RecipeIngredient {
@@ -41,6 +43,8 @@ export interface RecipeDetail {
   youtube_url: string | null
   source_url: string | null
   steps: string[]
+  /** True for an AI-written recipe (F8): the page badges it in place of the tags. */
+  generated: boolean
   ingredients: RecipeIngredient[]
 }
 

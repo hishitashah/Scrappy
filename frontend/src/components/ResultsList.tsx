@@ -4,6 +4,8 @@ import { Link } from 'react-router'
 
 import { useMatches, usePantry } from '../api/hooks'
 import type { Match } from '../api/types'
+import { AiBadge } from './AiNote'
+import { GenerateRecipeButton } from './GenerateRecipeButton'
 
 export function ResultsList() {
   const pantry = usePantry()
@@ -32,11 +34,16 @@ export function ResultsList() {
         // Two distinct empty states (spec US-5), chosen by whether the pantry is empty.
         // Recipes under 50% are hidden, so the second message can't promise "no recipes use
         // these ingredients" — it says what actually helps: add a few more.
-        <p className="text-cream/85">
-          {pantryIsEmpty
-            ? 'Add a few ingredients to see what you can make.'
-            : "Nothing's close enough yet. Add a few more ingredients."}
-        </p>
+        <div className="flex flex-col gap-4">
+          <p className="text-cream/85">
+            {pantryIsEmpty
+              ? 'Add a few ingredients to see what you can make.'
+              : "Nothing's close enough yet. Add a few more ingredients."}
+          </p>
+          {/* Only with something in the pantry: there is nothing to build a recipe from
+              otherwise, and the endpoint answers 422 (spec 10.12). */}
+          {!pantryIsEmpty && <GenerateRecipeButton />}
+        </div>
       ) : (
         <ul className="flex flex-col gap-3">
           {matches.data.map((match) => (
@@ -59,8 +66,13 @@ function RecipeCard({ match }: { match: Match }) {
       <div className="min-w-0">
         <div className="flex items-baseline justify-between gap-3">
           <span className="truncate font-semibold">{match.title}</span>
-          <span className="shrink-0 rounded-full bg-cream px-2.5 py-0.5 text-xs font-bold text-forest-dark">
-            {match.match}%
+          <span className="flex shrink-0 items-baseline gap-2">
+            {/* Read from the API, never inferred: a recipe a model wrote says so wherever
+                it appears (spec 10.12). */}
+            {match.generated && <AiBadge compact />}
+            <span className="rounded-full bg-cream px-2.5 py-0.5 text-xs font-bold text-forest-dark">
+              {match.match}%
+            </span>
           </span>
         </div>
         <p className="mt-0.5 text-sm text-cream/85">

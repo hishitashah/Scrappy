@@ -109,3 +109,23 @@ export function useSubstitutions(recipeId: number) {
       apiFetch<SubstitutionsResponse>(`/recipes/${recipeId}/substitutions`, { method: 'POST' }),
   })
 }
+
+/**
+ * Write a recipe from the pantry and save it to the account (F8, spec 10.12).
+ *
+ * A mutation for the same reason as above: a query would run on mount, and this spends
+ * money. The server reads the pantry itself, so there is no body to send.
+ */
+export function useGenerateRecipe() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => apiFetch<RecipeDetail>('/recipes/generate', { method: 'POST' }),
+    onSuccess: (recipe) => {
+      // The page we're about to navigate to reads this key, so seeding it renders the
+      // recipe we just paid for instead of fetching it a second time behind a skeleton.
+      queryClient.setQueryData(queryKeys.recipe(recipe.id), recipe)
+      // And it belongs in the results list we came from, where it is a complete match.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.matches })
+    },
+  })
+}

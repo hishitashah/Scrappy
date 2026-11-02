@@ -3,7 +3,7 @@ import type { ReactElement } from 'react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { describe, expect, it } from 'vitest'
 
-import { recipe, resetRecipe } from '../test/handlers'
+import { generatedRecipe, recipe, resetRecipe } from '../test/handlers'
 import { renderWithQuery } from '../test/render'
 import { RecipeIngredientsPage } from './RecipeIngredientsPage'
 import { RecipeIntroPage } from './RecipeIntroPage'
@@ -54,6 +54,24 @@ describe('recipe intro page', () => {
     await intro()
 
     expect(screen.queryByRole('img', { name: 'Egg fried rice' })).not.toBeInTheDocument()
+  })
+
+  it('badges an AI-written recipe where the tags would be', async () => {
+    resetRecipe(generatedRecipe())
+
+    await intro()
+
+    expect(screen.getByText('AI-generated')).toBeInTheDocument()
+    // No category, no cuisine, no photo — and none invented to fill the gap (spec 10.12).
+    expect(screen.queryByText('Rice')).not.toBeInTheDocument()
+    expect(screen.queryByText('Chinese')).not.toBeInTheDocument()
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+  })
+
+  it('does not badge an imported recipe', async () => {
+    await intro()
+
+    expect(screen.queryByText('AI-generated')).not.toBeInTheDocument()
   })
 })
 
