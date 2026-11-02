@@ -3,6 +3,7 @@
 import { Link, useParams } from 'react-router'
 
 import { useRecipe } from '../api/hooks'
+import { AiBadge } from '../components/AiNote'
 import { RecipePageFrame } from '../components/RecipePageFrame'
 
 export function RecipeIntroPage() {
@@ -33,14 +34,20 @@ export function RecipeIntroPage() {
             <div>
               <h3 className="font-display text-3xl font-bold tracking-tight">{recipe.title}</h3>
               <div className="mt-3 flex flex-wrap gap-2">
-                {[recipe.category, recipe.area].filter(Boolean).map((tag) => (
-                  <span
-                    key={tag}
-                    className="rounded-full bg-cream/15 px-3 py-1 text-sm font-medium"
-                  >
-                    {tag}
-                  </span>
-                ))}
+                {/* A generated recipe has no category or cuisine, so the badge takes the
+                    tags' place rather than sitting beside an empty row (spec 10.3). */}
+                {recipe.generated ? (
+                  <AiBadge />
+                ) : (
+                  [recipe.category, recipe.area].filter(Boolean).map((tag) => (
+                    <span
+                      key={tag}
+                      className="rounded-full bg-cream/15 px-3 py-1 text-sm font-medium"
+                    >
+                      {tag}
+                    </span>
+                  ))
+                )}
               </div>
             </div>
           </div>

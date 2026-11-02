@@ -1,4 +1,4 @@
-import { screen, waitForElementToBeRemoved } from '@testing-library/react'
+import { screen, waitForElementToBeRemoved, within } from '@testing-library/react'
 import { HttpResponse, http } from 'msw'
 import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it } from 'vitest'
@@ -9,6 +9,7 @@ import { server } from '../test/server'
 import { ResultsList } from './ResultsList'
 
 const API = 'http://localhost:8000'
+const GENERATE = 'Generate a recipe from my ingredients'
 
 async function renderResults() {
   renderWithQuery(
@@ -65,6 +66,9 @@ describe('ResultsList', () => {
     expect(
       screen.getByText('Add a few ingredients to see what you can make.'),
     ).toBeInTheDocument()
+    // Nothing to build a recipe from, and the endpoint would answer 422: a button here
+    // would promise something it can't do (spec 10.12).
+    expect(screen.queryByRole('button', { name: GENERATE })).not.toBeInTheDocument()
   })
 
   it('asks for more ingredients when nothing clears the 50% floor', async () => {
@@ -75,6 +79,23 @@ describe('ResultsList', () => {
     expect(
       screen.getByText("Nothing's close enough yet. Add a few more ingredients."),
     ).toBeInTheDocument()
+    // The dead end F8 exists to answer: a pantry with something in it, matching nothing.
+    expect(screen.getByRole('button', { name: GENERATE })).toBeInTheDocument()
+  })
+
+  it('labels an AI-written recipe, and only that one', async () => {
+    resetPantry([pantryItem(1)])
+    resetMatches([
+      match({ id: 42, title: 'Egg fried rice' }),
+      match({ id: 51, title: 'Garlic Fried Rice', generated: true }),
+    ])
+
+    await renderResults()
+
+    const generated = screen.getByRole('link', { name: /Garlic Fried Rice/ })
+    const imported = screen.getByRole('link', { name: /Egg fried rice/ })
+    expect(within(generated).getByText('AI-generated')).toBeInTheDocument()
+    expect(within(imported).queryByText('AI-generated')).not.toBeInTheDocument()
   })
 
   it('offers "Try again" when matches fail to load', async () => {

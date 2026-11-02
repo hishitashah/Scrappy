@@ -46,6 +46,7 @@ export function match(overrides: Partial<Match> = {}): Match {
     total: 7,
     match: 43,
     missing: ['Oil', 'Salt', 'Soy Sauce', 'Spring Onion'],
+    generated: false,
     ...overrides,
   }
 }
@@ -70,6 +71,7 @@ export function recipe(overrides: Partial<RecipeDetail> = {}): RecipeDetail {
     youtube_url: 'https://example.test/video',
     source_url: 'https://example.test/source',
     steps: ['Boil the rice.', 'Fry the eggs.', 'Combine and serve.'],
+    generated: false,
     ingredients: [
       { id: 2, display_name: 'Rice', measure: '2 cups', owned: true },
       { id: 1, display_name: 'Egg', measure: '3', owned: true },
@@ -80,6 +82,24 @@ export function recipe(overrides: Partial<RecipeDetail> = {}): RecipeDetail {
     ],
     ...overrides,
   }
+}
+
+/**
+ * What `POST /recipes/generate` answers with (F8): no category, cuisine, photo, video or
+ * source, because a generated recipe has none and invents none.
+ */
+export function generatedRecipe(overrides: Partial<RecipeDetail> = {}): RecipeDetail {
+  return recipe({
+    id: 51,
+    title: 'Garlic Fried Rice',
+    category: null,
+    area: null,
+    image_url: null,
+    youtube_url: null,
+    source_url: null,
+    generated: true,
+    ...overrides,
+  })
 }
 
 let recipeDetail: RecipeDetail | null = recipe()
@@ -135,7 +155,8 @@ export const handlers = [
       ? HttpResponse.json(recipeDetail)
       : HttpResponse.json({ detail: 'Recipe not found' }, { status: 404 }),
   ),
-  // Tests that care about the AI call override this; it exists so that an accidental
+  // Tests that care about the AI calls override these; they exist so that an accidental
   // request fails a test loudly rather than tripping MSW's unhandled-request error.
   http.post(`${API}/recipes/:id/substitutions`, () => HttpResponse.json(substitutions())),
+  http.post(`${API}/recipes/generate`, () => HttpResponse.json(generatedRecipe())),
 ]
