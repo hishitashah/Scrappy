@@ -84,6 +84,11 @@ function AppMenu() {
           </Link>
         </MenuItem>
         <MenuItem>
+          <Link to="/list" className="block px-5 py-2.5 text-ink data-focus:bg-forest-light">
+            Grocery list
+          </Link>
+        </MenuItem>
+        <MenuItem>
           <LogOutButton />
         </MenuItem>
       </MenuItems>

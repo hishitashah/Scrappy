@@ -4,6 +4,7 @@ import { useParams } from 'react-router'
 
 import { useRecipe } from '../api/hooks'
 import type { RecipeIngredient } from '../api/types'
+import { AddAllMissingButton, AddToListButton } from '../components/AddToList'
 import { RecipePageFrame } from '../components/RecipePageFrame'
 import { SubstitutionsPanel } from '../components/SubstitutionsPanel'
 
@@ -26,9 +27,13 @@ export function RecipeIngredientsPage() {
 
         return (
           <>
-            <p className="mb-5 text-sm font-medium text-cream/80">
-              You have {owned} of {recipe.ingredients.length}
-            </p>
+            <div className="mb-5 flex items-center justify-between gap-4">
+              <p className="text-sm font-medium text-cream/80">
+                You have {owned} of {recipe.ingredients.length}
+              </p>
+              {/* Absent once everything missing is listed (F9, spec 10.13). */}
+              <AddAllMissingButton ingredients={recipe.ingredients} />
+            </div>
             <ul className="flex flex-col gap-3">
               {recipe.ingredients.map((ingredient) => (
                 <IngredientRow key={ingredient.id} ingredient={ingredient} />
@@ -56,8 +61,11 @@ function IngredientRow({ ingredient }: { ingredient: RecipeIngredient }) {
         {ingredient.measure && <span className="text-cream/70"> — {ingredient.measure}</span>}
       </span>
       {!ingredient.owned && (
-        <span className="ml-auto shrink-0 rounded-full bg-cream/10 px-2 py-0.5 text-xs">
-          missing
+        <span className="ml-auto flex shrink-0 items-baseline gap-2">
+          {/* The pill is the state, the button is the action — spec 10.3 wants missing
+              rows visually distinct whether or not anything has been done about them. */}
+          <span className="rounded-full bg-cream/10 px-2 py-0.5 text-xs">missing</span>
+          <AddToListButton ingredient={ingredient} />
         </span>
       )}
     </li>

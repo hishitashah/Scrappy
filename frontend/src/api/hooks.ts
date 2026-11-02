@@ -2,14 +2,25 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import type { StoreKey } from '../lib/stores'
 import { apiFetch } from './client'
-import type { Ingredient, Match, PantryItem, RecipeDetail, SubstitutionsResponse } from './types'
+import type {
+  GroceryItem,
+  Ingredient,
+  Match,
+  Me,
+  PantryItem,
+  RecipeDetail,
+  SubstitutionsResponse,
+} from './types'
 
 export const queryKeys = {
   ingredients: ['ingredients'] as const,
   pantry: ['pantry'] as const,
   matches: ['matches'] as const,
   recipe: (id: number) => ['recipe', id] as const,
+  groceryList: ['grocery-list'] as const,
+  me: ['me'] as const,
 }
 
 /** The catalog is downloaded once per session and filtered in the browser (spec 10.1). */
@@ -59,6 +70,10 @@ export function useAddPantryItems() {
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.pantry })
       void queryClient.invalidateQueries({ queryKey: queryKeys.matches })
+      // The server deleted these from the grocery list in the same transaction — you
+      // bought it, so it is no longer something to buy (spec 10.13). Without this the
+      // list keeps showing it until something else happens to refetch.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.groceryList })
     },
   })
 }
@@ -88,6 +103,110 @@ export function useRemovePantryItem() {
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.pantry })
       void queryClient.invalidateQueries({ queryKey: queryKeys.matches })
+    },
+  })
+}
+
+export function useGroceryList() {
+  return useQuery({
+    queryKey: queryKeys.groceryList,
+    queryFn: () => apiFetch<GroceryItem[]>('/grocery-list'),
+  })
+}
+
+/** Add one ingredient or many: the API takes up to 50 ids in a single call (spec 10.13). */
+export function useAddGroceryItems() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (ingredientIds: number[]) =>
+      apiFetch<GroceryItem[]>('/grocery-list/items', {
+        method: 'POST',
+        body: JSON.stringify({ ingredient_ids: ingredientIds }),
+      }),
+    onSuccess: (list) => {
+      queryClient.setQueryData(queryKeys.groceryList, list)
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.groceryList })
+    },
+  })
+}
+
+/** Optimistic, like the pantry's removal: the row goes at once and returns on failure. */
+export function useRemoveGroceryItem() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (ingredientId: number) =>
+      apiFetch<void>(`/grocery-list/items/${ingredientId}`, { method: 'DELETE' }),
+    onMutate: async (ingredientId) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.groceryList })
+      const previous = queryClient.getQueryData<GroceryItem[]>(queryKeys.groceryList)
+      queryClient.setQueryData<GroceryItem[]>(queryKeys.groceryList, (list) =>
+        (list ?? []).filter((item) => item.ingredient_id !== ingredientId),
+      )
+      return { previous }
+    },
+    onError: (_error, _ingredientId, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(queryKeys.groceryList, context.previous)
+      }
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.groceryList })
+    },
+  })
+}
+
+/**
+ * Empty the list in one request (spec 10.13).
+ *
+ * One call rather than one delete per row: a loop can fail halfway and leave the list
+ * partly cleared, which is a state nothing else in the app can produce.
+ */
+export function useClearGroceryList() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => apiFetch<void>('/grocery-list', { method: 'DELETE' }),
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.groceryList })
+      const previous = queryClient.getQueryData<GroceryItem[]>(queryKeys.groceryList)
+      queryClient.setQueryData<GroceryItem[]>(queryKeys.groceryList, [])
+      return { previous }
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(queryKeys.groceryList, context.previous)
+      }
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.groceryList })
+    },
+  })
+}
+
+export function useMe() {
+  return useQuery({
+    queryKey: queryKeys.me,
+    queryFn: () => apiFetch<Me>('/me'),
+  })
+}
+
+/**
+ * Choose which supermarket the list links to (spec 10.13).
+ *
+ * Stored on the server rather than in the browser, so the choice follows the user between
+ * devices as their pantry does.
+ */
+export function useSetPreferredStore() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (store: StoreKey | null) =>
+      apiFetch<Me>('/me', {
+        method: 'PATCH',
+        body: JSON.stringify({ preferred_store: store }),
+      }),
+    onSuccess: (me) => {
+      queryClient.setQueryData(queryKeys.me, me)
     },
   })
 }

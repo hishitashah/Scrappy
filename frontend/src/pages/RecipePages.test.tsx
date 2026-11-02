@@ -110,6 +110,19 @@ describe('recipe ingredients page', () => {
     expect(within(items[5]!).getByText('missing')).toBeInTheDocument()
   })
 
+  it('offers to list a missing ingredient, and only a missing one', async () => {
+    // F9 (spec 10.13). The buttons' own behaviour is tested in AddToList.test.tsx; this
+    // proves which rows get one, and that the "missing" mark survives beside it.
+    await ingredients()
+
+    const items = screen.getAllByRole('listitem')
+    expect(within(items[0]!).queryByRole('button', { name: 'Add to list' })).not.toBeInTheDocument()
+    expect(within(items[4]!).getByRole('button', { name: 'Add to list' })).toBeInTheDocument()
+    expect(within(items[4]!).getByText('missing')).toBeInTheDocument()
+
+    expect(screen.getByRole('button', { name: 'Add all 2 to list' })).toBeInTheDocument()
+  })
+
   it('moves forward to the steps and back to the overview', async () => {
     await ingredients()
 
