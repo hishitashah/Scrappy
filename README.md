@@ -12,7 +12,7 @@ Most recipe sites start from a recipe and send you shopping. Scrappy works backw
 
 ## Live demo
 
-**[SCRAPPY_LIVE_URL]**
+**<https://d3co1qxd5fhw9l.cloudfront.net>**
 
 It needs an account (email plus a verification code) and it's **desktop-only** — there's no mobile layout, by design. A cold start against a suspended database takes about five seconds; after that, requests are ~0.2s.
 
