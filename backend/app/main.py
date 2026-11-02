@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
 
 from app.observability import install as install_observability
-from app.routers import ai, ingredients, matches, pantry, recipes
+from app.routers import ai, grocery, ingredients, matches, me, pantry, recipes
 from app.schemas import HealthResponse
 from app.settings import get_settings
 
@@ -31,6 +31,8 @@ app.include_router(pantry.router)
 app.include_router(matches.router)
 app.include_router(recipes.router)
 app.include_router(ai.router)
+app.include_router(grocery.router)
+app.include_router(me.router)
 
 
 @app.get("/health")
