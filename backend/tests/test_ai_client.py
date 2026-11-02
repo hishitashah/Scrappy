@@ -13,10 +13,14 @@ import pytest
 
 from app.ai import (
     EFFORT,
+    GENERATION_MAX_TOKENS,
     MAX_TOKENS,
     AiUnavailable,
+    AnthropicGeneration,
     AnthropicSubstitutions,
+    build_generation_prompt,
     build_prompt,
+    get_generation_client,
     get_substitution_client,
 )
 from app.settings import Settings
@@ -172,3 +176,96 @@ def test_an_sdk_failure_becomes_an_unusable_answer_with_no_spend() -> None:
 
     # Nothing was billed, so nothing is recorded: the ledger never invents spend.
     assert (raised.value.input_tokens, raised.value.output_tokens) == (0, 0)
+
+
+def recipe_answer(*items: tuple[str, str | None], stop_reason: str = "end_turn") -> SimpleNamespace:
+    """A response shaped like the SDK's, carrying a generated recipe (F8)."""
+    return SimpleNamespace(
+        stop_reason=stop_reason,
+        parsed_output=SimpleNamespace(
+            title="Garlic Fried Rice",
+            ingredients=[SimpleNamespace(name=name, measure=measure) for name, measure in items],
+            steps=["Boil the rice.", "Fry it."],
+        ),
+        usage=SimpleNamespace(input_tokens=740, output_tokens=1120),
+    )
+
+
+def test_a_generated_recipe_is_parsed_with_its_token_counts() -> None:
+    client = stub_client(recipe_answer(("Rice", "2 cups"), ("Garlic", None)))
+
+    result = AnthropicGeneration(client, settings()).generate(pantry=["Rice", "Garlic"])
+
+    assert result.recipe.title == "Garlic Fried Rice"
+    assert [(line.display_name, line.measure) for line in result.recipe.lines] == [
+        ("Rice", "2 cups"),
+        # A missing measure stays missing rather than becoming "": nothing is invented.
+        ("Garlic", None),
+    ]
+    assert result.recipe.steps == ["Boil the rice.", "Fry it."]
+    assert (result.input_tokens, result.output_tokens) == (740, 1120)
+
+
+def test_the_generation_request_asks_for_the_larger_ceiling() -> None:
+    client = stub_client(recipe_answer(("Rice", "2 cups")))
+
+    AnthropicGeneration(client, settings()).generate(pantry=["Rice"])
+
+    sent = client.messages.kwargs
+    assert sent["model"] == "claude-opus-5-5"
+    # A whole recipe needs more room than two lines of substitution, and thinking tokens
+    # come out of the same ceiling.
+    assert sent["max_tokens"] == GENERATION_MAX_TOKENS
+    assert sent["max_tokens"] > MAX_TOKENS
+    assert sent["output_config"] == {"effort": EFFORT}
+    assert sent["output_format"].__name__ == "_GeneratedRecipe"
+
+
+@pytest.mark.parametrize("stop_reason", ["refusal", "max_tokens"])
+def test_a_declined_or_truncated_recipe_is_refused(stop_reason: str) -> None:
+    """A recipe cut off mid-method reads as a complete recipe, which is worse than none."""
+    client = stub_client(recipe_answer(("Rice", "2 cups"), stop_reason=stop_reason))
+
+    with pytest.raises(AiUnavailable) as raised:
+        AnthropicGeneration(client, settings()).generate(pantry=["Rice"])
+
+    assert (raised.value.input_tokens, raised.value.output_tokens) == (740, 1120)
+
+
+def test_a_generation_response_with_no_structured_output_is_refused() -> None:
+    client = stub_client(
+        SimpleNamespace(
+            stop_reason="end_turn",
+            parsed_output=None,
+            usage=SimpleNamespace(input_tokens=1, output_tokens=1),
+        )
+    )
+
+    with pytest.raises(AiUnavailable):
+        AnthropicGeneration(client, settings()).generate(pantry=["Rice"])
+
+
+def test_an_sdk_failure_during_generation_records_no_spend() -> None:
+    import httpx2
+    from anthropic import APIConnectionError
+
+    dropped = APIConnectionError(request=httpx2.Request("POST", "https://api.anthropic.com"))
+
+    with pytest.raises(AiUnavailable) as raised:
+        AnthropicGeneration(stub_client(dropped), settings()).generate(pantry=["Rice"])
+
+    assert (raised.value.input_tokens, raised.value.output_tokens) == (0, 0)
+
+
+def test_the_generation_prompt_names_the_pantry_and_forbids_the_rest() -> None:
+    prompt = build_generation_prompt(["Rice", "Egg", "Garlic"])
+
+    assert "Rice, Egg, Garlic" in prompt
+    # Without this the model writes an ordinary recipe and the cook is short four things.
+    assert "only the ingredients listed" in prompt
+
+
+def test_there_is_no_generation_client_without_a_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.ai.get_settings", lambda: settings())
+
+    assert get_generation_client() is None

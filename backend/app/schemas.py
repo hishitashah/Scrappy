@@ -51,6 +51,9 @@ class MatchResponse(BaseModel):
     total: int
     match: int
     missing: list[str]
+    # True for an AI-written recipe (F8), which the card labels. Always this user's own:
+    # matching never shows one belonging to anyone else.
+    generated: bool
 
 
 class RecipeIngredientResponse(BaseModel):
@@ -73,6 +76,9 @@ class RecipeDetailResponse(BaseModel):
     youtube_url: str | None
     source_url: str | None
     steps: list[str]
+    # True for an AI-written recipe (F8). The page shows a badge in place of the category
+    # and cuisine tags, which a generated recipe doesn't have.
+    generated: bool
     ingredients: list[RecipeIngredientResponse]
 
 

@@ -475,7 +475,7 @@ Note: only `ingredient_id` is ever sent or stored for a pantry item. There is no
 - Errors show inline with "Try again."
 - Clicking a card navigates to `/recipes/:id`.
 
-**API.** `GET /matches?limit=20` (`limit` 1–50) returns `[{id, title, thumbnail_url, have, total, match, missing}]`. `thumbnail_url` stays in the response, unused by the MVP UI, because the ranked list shows no images; it costs nothing and saves an API change if that ever changes.
+**API.** `GET /matches?limit=20` (`limit` 1–50) returns `[{id, title, thumbnail_url, have, total, match, missing, generated}]`. `thumbnail_url` stays in the response, unused by the MVP UI, because the ranked list shows no images; it costs nothing and saves an API change if that ever changes.
 
 **Backend**
 
@@ -491,17 +491,20 @@ WITH scored AS (
          count(*) FILTER (WHERE ri.ingredient_id = ANY(:pantry))         AS from_pantry,
          count(*)                                                          AS total,
          array_agg(i.display_name ORDER BY ri.position)
-           FILTER (WHERE ri.ingredient_id <> ALL(:have))                  AS missing
+           FILTER (WHERE ri.ingredient_id <> ALL(:have))                  AS missing,
+         -- Labels the card, so an AI-written recipe is never mistaken for an imported one.
+         r.source = 'generated'                                            AS generated
   FROM recipes r
   JOIN recipe_ingredients ri ON ri.recipe_id = r.id
   JOIN ingredients i         ON i.id = ri.ingredient_id
   -- The imported catalog is shared; a generated recipe is visible only to its owner (F8).
   WHERE r.source <> 'generated' OR r.created_by = :user_id
-  GROUP BY r.id, r.title, r.image_url
+  GROUP BY r.id, r.title, r.image_url, r.source
 )
 SELECT id, title, image_url AS thumbnail_url, have, total,
        round(100.0 * have / total)::int AS match,
-       coalesce(missing, '{}')          AS missing
+       coalesce(missing, '{}')          AS missing,
+       generated
 FROM scored
 -- An assumed staple raises a recipe's score but never qualifies it alone: water appears
 -- in 150 recipes, and listing all of them for an unrelated pantry is noise.
@@ -867,6 +870,9 @@ recipe page with an "AI-generated" badge.
 - `POST /recipes/generate` takes no body and uses the caller's saved pantry. An empty pantry
   returns 422.
 - Guardrails and the usage ledger work exactly as in 10.11, with the generation daily limit.
+- **There is no cache**, unlike substitutions. The same recipe and pantry is the same question,
+  so 10.11 caches it; but pressing "generate" again means "give me a different idea", which a
+  cache would refuse to do. The daily limit of 3 per user is the control instead.
 - The call: `claude-opus-5-5`, structured outputs (title, ingredients with measurements,
   steps), `output_config: {"effort": "low"}`, `max_tokens` 8192 (see 10.11 on thinking
   tokens).
@@ -874,6 +880,15 @@ recipe page with an "AI-generated" badge.
   title, measurements, and numbered steps.
 - Every returned ingredient name is normalized through `app/normalize.py` and mapped to the
   catalog. A name that maps to nothing is created as an ingredient, exactly as the import does.
+  Two lines of one recipe that normalize to the same ingredient collapse to one, and a name that
+  normalizes to nothing at all (punctuation, whitespace) is dropped rather than stored: the
+  catalog is shared, and a nameless row would reach every user's autocomplete.
+- **An ingredient the cook doesn't have is kept, not dropped.** The prompt asks for the pantry
+  and nothing else, but models add salt or oil anyway. The line is saved as returned, so the
+  recipe reports "you have 7 of 8" and the method still reads correctly. Filtering to pantry
+  ingredients would guarantee a 100% match while leaving "season with salt" in step 3 referring
+  to an ingredient no longer listed — a recipe that lies about itself. Matching tells the truth;
+  the save path does not hide it.
 - The recipe is saved with `source='generated'`, `created_by` set to the caller, `category`,
   `area`, `image_url`, `youtube_url` and `source_url` null, and returned in the `/recipes/{id}` shape
   plus `"generated": true`.
@@ -964,7 +979,7 @@ All endpoints except `/health` require `Authorization: Bearer <Cognito access to
 | GET | `/pantry` | — | 200 `[{ingredient_id, display_name, added_at}]` | 401 |
 | POST | `/pantry/items` | `{"ingredient_ids": [int]}`, 1–50 IDs | 200 updated pantry | 401, 422 |
 | DELETE | `/pantry/items/{ingredient_id}` | — | 204 | 401 |
-| GET | `/matches` | `?limit=1–50` (default 20) | 200 `[{id, title, thumbnail_url, have, total, match, missing}]` | 401, 422 |
+| GET | `/matches` | `?limit=1–50` (default 20) | 200 `[{id, title, thumbnail_url, have, total, match, missing, generated}]` | 401, 422 |
 | GET | `/recipes/{id}` | — | 200 recipe detail (see 10.3) | 401, 404 |
 | POST | `/recipes/{id}/substitutions` | — | 200 `{suggestions: [{missing_ingredient, suggestion, reason, in_pantry}]}` | 401, 404, 429, 502, 503 |
 | POST | `/recipes/generate` | — | 200 recipe detail plus `generated: true` | 401, 422, 429, 502, 503 |

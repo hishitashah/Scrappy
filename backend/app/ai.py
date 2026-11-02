@@ -1,15 +1,19 @@
-"""The one place Scrappy talks to a model (F7, spec 10.11).
+"""The one place Scrappy talks to a model (F7 and F8, spec 10.11 and 10.12).
 
-Two things live here, deliberately separated:
+Each feature is a pair, deliberately separated:
 
-- `SubstitutionClient`, the shape the rest of the app depends on. It takes a recipe title,
-  what's missing and what's in the pantry, and returns suggestions plus the token counts
-  the call used.
-- `AnthropicSubstitutions`, the only implementation that reaches the network.
+- a Protocol — `SubstitutionClient`, `GenerationClient` — which is the shape the rest of
+  the app depends on, and returns the token counts the call used along with its answer.
+- an adapter — `AnthropicSubstitutions`, `AnthropicGeneration` — the only implementations
+  that reach the network.
 
 The split is what lets every endpoint test run without an API key, without a network call
-and without spending anything: tests supply their own `SubstitutionClient`. The adapter has
-its own tests against a stub SDK object, so its parsing is still covered.
+and without spending anything: tests supply their own client. The adapters have their own
+tests against a stub SDK object, so their parsing is still covered.
+
+Two features, two Protocols, rather than one client with two methods: each endpoint then
+overrides only the dependency it uses, and a test for one can't accidentally satisfy the
+other.
 
 **The model is asked for judgment, never for facts** (spec section 4). "What could stand in
 for buttermilk?" is a question a model answers well. Which ingredients the user owns, which
@@ -21,7 +25,7 @@ import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Protocol
+from typing import Any, Protocol
 
 from pydantic import BaseModel, Field
 
@@ -33,6 +37,10 @@ logger = logging.getLogger("scrappy")
 # so this ceiling has to leave room for reasoning as well as the answer. `effort: "low"` is
 # what keeps the spend down instead of a tight ceiling (spec 10.11).
 MAX_TOKENS = 4096
+# A whole recipe — a title, every ingredient with its measure, and numbered steps — needs
+# far more room than two lines of substitution, and the same thinking tokens come out of
+# the same ceiling (spec 10.12).
+GENERATION_MAX_TOKENS = 8192
 EFFORT = "low"
 
 
@@ -73,12 +81,44 @@ class AiUnavailable(Exception):
         self.output_tokens = output_tokens
 
 
+@dataclass(frozen=True)
+class GeneratedLine:
+    """One ingredient line of a generated recipe, as the model wrote it."""
+
+    display_name: str
+    measure: str | None
+
+
+@dataclass(frozen=True)
+class GeneratedRecipe:
+    """A recipe the model wrote. Not yet saved, and not yet mapped onto the catalog."""
+
+    title: str
+    lines: list[GeneratedLine]
+    steps: list[str]
+
+
+@dataclass(frozen=True)
+class GenerationResult:
+    """A generated recipe plus what it cost, in tokens, from the response's own `usage`."""
+
+    recipe: GeneratedRecipe
+    input_tokens: int
+    output_tokens: int
+
+
 class SubstitutionClient(Protocol):
     """The seam. Tests replace this; nothing else in the app knows about Anthropic."""
 
     def suggest(
         self, *, recipe_title: str, missing: Sequence[str], pantry: Sequence[str]
     ) -> AiResult: ...
+
+
+class GenerationClient(Protocol):
+    """The same seam for F8. The pantry is the whole input: there is no recipe yet."""
+
+    def generate(self, *, pantry: Sequence[str]) -> GenerationResult: ...
 
 
 class _SubstitutionItem(BaseModel):
@@ -91,6 +131,19 @@ class _SubstitutionItem(BaseModel):
 
 class _SubstitutionList(BaseModel):
     substitutions: list[_SubstitutionItem]
+
+
+class _GeneratedIngredient(BaseModel):
+    """One ingredient line of the structured output the model is constrained to return."""
+
+    name: str = Field(description="The ingredient alone, with no quantity, e.g. 'rice'")
+    measure: str | None = Field(description="How much, as written, e.g. '2 cups'")
+
+
+class _GeneratedRecipe(BaseModel):
+    title: str = Field(description="A short dish name, at most 6 words")
+    ingredients: list[_GeneratedIngredient]
+    steps: list[str] = Field(description="The method, one step per item, in order")
 
 
 def build_prompt(recipe_title: str, missing: Sequence[str], pantry: Sequence[str]) -> str:
@@ -110,6 +163,56 @@ def build_prompt(recipe_title: str, missing: Sequence[str], pantry: Sequence[str
         "sensible substitute, leave it out rather than suggesting something that would not "
         "work."
     )
+
+
+def build_generation_prompt(pantry: Sequence[str]) -> str:
+    """Ask for a recipe built from this pantry and nothing else.
+
+    "Only these" is a request, not a guarantee: models add salt and oil anyway. Nothing
+    here tries to prevent that, because the saved recipe reports what it actually needs
+    and matching says "you have 7 of 8" — an honest answer the cook can act on. Silently
+    dropping the extra line would leave step 3 seasoning with salt that isn't listed.
+    """
+    pantry_list = ", ".join(pantry) if pantry else "nothing"
+    return (
+        f"A cook has these ingredients and nothing else: {pantry_list}\n\n"
+        "Write one recipe they could actually make. Use only the ingredients listed, "
+        "assuming they have water, a stove and basic equipment. Give the dish a short "
+        "name, list each ingredient with how much to use, and write the method as "
+        "numbered steps. Keep it to something a home cook can follow."
+    )
+
+
+def _parsed_or_raise(response: Any) -> Any:
+    """Return the structured output, or refuse the three answers that only look like one.
+
+    `refusal` is a safety decline and `max_tokens` means truncated; both leave
+    `parsed_output` empty or partial, so they are checked before the content is read. A
+    missing `parsed_output` on an otherwise normal stop is the third.
+
+    Truncation is the dangerous one. Half a list reads as a complete answer — "nothing
+    substitutes for these", or a recipe whose method stops mid-step — which is a wrong
+    answer rather than a missing one.
+
+    The token counts travel with the failure because the call was billed regardless.
+    """
+    if response.stop_reason in ("refusal", "max_tokens"):
+        logger.warning("ai call unusable", extra={"reason": response.stop_reason})
+        raise AiUnavailable(
+            f"model stopped with {response.stop_reason}",
+            response.usage.input_tokens,
+            response.usage.output_tokens,
+        )
+
+    parsed = response.parsed_output
+    if parsed is None:
+        logger.warning("ai call unusable", extra={"reason": "no_parsed_output"})
+        raise AiUnavailable(
+            "model returned no structured output",
+            response.usage.input_tokens,
+            response.usage.output_tokens,
+        )
+    return parsed
 
 
 class AnthropicSubstitutions:
@@ -147,25 +250,7 @@ class AnthropicSubstitutions:
             logger.warning("ai call failed", extra={"reason": type(failure).__name__})
             raise AiUnavailable(f"anthropic call failed: {type(failure).__name__}") from failure
 
-        # Checked before the content is read, because both of these leave `parsed_output`
-        # empty or partial. `refusal` is a safety decline; `max_tokens` means truncated.
-        if response.stop_reason in ("refusal", "max_tokens"):
-            logger.warning("ai call unusable", extra={"reason": response.stop_reason})
-            raise AiUnavailable(
-                f"model stopped with {response.stop_reason}",
-                response.usage.input_tokens,
-                response.usage.output_tokens,
-            )
-
-        parsed = response.parsed_output
-        if parsed is None:
-            logger.warning("ai call unusable", extra={"reason": "no_parsed_output"})
-            raise AiUnavailable(
-                "model returned no structured output",
-                response.usage.input_tokens,
-                response.usage.output_tokens,
-            )
-
+        parsed = _parsed_or_raise(response)
         return AiResult(
             suggestions=[
                 Suggestion(
@@ -175,6 +260,43 @@ class AnthropicSubstitutions:
                 )
                 for item in parsed.substitutions
             ],
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+        )
+
+
+class AnthropicGeneration:
+    """Calls Claude for a whole recipe. Same seam, same failure handling as F7."""
+
+    def __init__(self, client: object, settings: Settings) -> None:
+        self._client = client
+        self._settings = settings
+
+    def generate(self, *, pantry: Sequence[str]) -> GenerationResult:
+        from anthropic import APIError
+
+        try:
+            response = self._client.messages.parse(  # type: ignore[attr-defined]
+                model=self._settings.ai_model,
+                max_tokens=GENERATION_MAX_TOKENS,
+                output_config={"effort": EFFORT},
+                output_format=_GeneratedRecipe,
+                messages=[{"role": "user", "content": build_generation_prompt(pantry)}],
+            )
+        except APIError as failure:
+            logger.warning("ai call failed", extra={"reason": type(failure).__name__})
+            raise AiUnavailable(f"anthropic call failed: {type(failure).__name__}") from failure
+
+        parsed = _parsed_or_raise(response)
+        return GenerationResult(
+            recipe=GeneratedRecipe(
+                title=parsed.title,
+                lines=[
+                    GeneratedLine(display_name=item.name, measure=item.measure)
+                    for item in parsed.ingredients
+                ],
+                steps=list(parsed.steps),
+            ),
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
         )
@@ -203,3 +325,11 @@ def get_substitution_client() -> SubstitutionClient | None:
     if not settings.anthropic_api_key:
         return None
     return AnthropicSubstitutions(_anthropic_client(settings.anthropic_api_key), settings)
+
+
+def get_generation_client() -> GenerationClient | None:
+    """FastAPI dependency for F8, None when unkeyed, for the reason given above."""
+    settings = get_settings()
+    if not settings.anthropic_api_key:
+        return None
+    return AnthropicGeneration(_anthropic_client(settings.anthropic_api_key), settings)
