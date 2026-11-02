@@ -1,9 +1,9 @@
 /**
- * The layout the three recipe pages share (spec 10.3), following the mockups in `docs/`:
- * a black heading on the cream field at the left, the content in a forest card at the
- * right, and a circular chevron onward.
+ * The three recipe pages' shared behaviour (spec 10.3): the loading, error and 404 states,
+ * so all three behave identically, plus the circular chevrons that advance the flow.
  *
- * It also owns the loading, error and 404 states, so all three pages behave identically.
+ * The frame itself — the heading and the forest card — is `PageShell`, shared with the
+ * grocery list.
  */
 
 import type { ReactNode } from 'react'
@@ -11,6 +11,7 @@ import { Link } from 'react-router'
 
 import { ApiError } from '../api/client'
 import type { RecipeDetail } from '../api/types'
+import { PageShell } from './PageShell'
 
 /** A labelled destination: the arrows carry words, so "next" is never a guess. */
 interface Step {
@@ -38,7 +39,7 @@ export function RecipePageFrame({ heading, query, children, previous, next }: Pr
   if (query.isError) {
     const notFound = query.error instanceof ApiError && query.error.status === 404
     return (
-      <Shell heading={notFound ? 'Recipe not found' : 'Something went wrong'}>
+      <PageShell heading={notFound ? 'Recipe not found' : 'Something went wrong'}>
         <div className="text-cream/85">
           {notFound ? (
             <>
@@ -58,24 +59,24 @@ export function RecipePageFrame({ heading, query, children, previous, next }: Pr
             </>
           )}
         </div>
-      </Shell>
+      </PageShell>
     )
   }
 
   if (query.isPending || !query.data) {
     return (
-      <Shell heading={heading}>
+      <PageShell heading={heading}>
         <div className="flex flex-col gap-3" aria-hidden="true" data-testid="recipe-skeleton">
           {[0, 1, 2, 3, 4].map((row) => (
             <div key={row} className="h-4 animate-pulse rounded-full bg-cream/20" />
           ))}
         </div>
-      </Shell>
+      </PageShell>
     )
   }
 
   return (
-    <Shell
+    <PageShell
       heading={heading}
       footer={
         <>
@@ -85,31 +86,7 @@ export function RecipePageFrame({ heading, query, children, previous, next }: Pr
       }
     >
       {children(query.data)}
-    </Shell>
-  )
-}
-
-function Shell({
-  heading,
-  children,
-  footer,
-}: {
-  heading: ReactNode
-  children: ReactNode
-  footer?: ReactNode
-}) {
-  return (
-    <div className="grid grid-cols-[1fr_minmax(420px,620px)] items-center gap-10">
-      <h2 className="font-display text-6xl leading-[0.95] font-extrabold tracking-tight uppercase">
-        {heading}
-      </h2>
-      <div>
-        <div className="rounded-card border border-olive/40 bg-forest p-9 text-cream">
-          {children}
-        </div>
-        {footer && <div className="mt-5 flex items-center justify-between gap-4">{footer}</div>}
-      </div>
-    </div>
+    </PageShell>
   )
 }
 

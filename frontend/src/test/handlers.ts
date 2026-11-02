@@ -1,12 +1,14 @@
 import { HttpResponse, http } from 'msw'
 
 import type {
+  GroceryItem,
   Ingredient,
   Match,
   PantryItem,
   RecipeDetail,
   SubstitutionsResponse,
 } from '../api/types'
+import type { StoreKey } from '../lib/stores'
 
 const API = 'http://localhost:8000'
 
@@ -28,9 +30,29 @@ export const catalog: Ingredient[] = [
 /** Mutable per-test pantry state, reset by `resetPantry`. */
 let pantry: PantryItem[] = []
 let matches: Match[] = []
+let groceryList: GroceryItem[] = []
+let preferredStore: StoreKey | null = null
 
 export function resetPantry(items: PantryItem[] = []) {
   pantry = [...items]
+}
+
+export function resetGroceryList(items: GroceryItem[] = []) {
+  groceryList = [...items]
+}
+
+/** Null is the real starting state: no store is chosen on the user's behalf. */
+export function resetMe(store: StoreKey | null = null) {
+  preferredStore = store
+}
+
+export function groceryItem(ingredientId: number): GroceryItem {
+  const ingredient = catalog.find((entry) => entry.id === ingredientId)!
+  return {
+    ingredient_id: ingredient.id,
+    display_name: ingredient.display_name,
+    added_at: '2026-11-02T00:00:00Z',
+  }
 }
 
 export function resetMatches(rows: Match[] = []) {
@@ -143,6 +165,9 @@ export const handlers = [
       if (!pantry.some((item) => item.ingredient_id === id)) pantry.push(pantryItem(id))
     }
     pantry.sort((a, b) => a.display_name.localeCompare(b.display_name))
+    // The real endpoint deletes these from the grocery list in the same transaction
+    // (spec 10.13). Mirrored here, or a test for that behaviour would prove nothing.
+    groceryList = groceryList.filter((item) => !body.ingredient_ids.includes(item.ingredient_id))
     return HttpResponse.json(pantry)
   }),
   http.delete(`${API}/pantry/items/:id`, ({ params }) => {
@@ -159,4 +184,29 @@ export const handlers = [
   // request fails a test loudly rather than tripping MSW's unhandled-request error.
   http.post(`${API}/recipes/:id/substitutions`, () => HttpResponse.json(substitutions())),
   http.post(`${API}/recipes/generate`, () => HttpResponse.json(generatedRecipe())),
+
+  http.get(`${API}/grocery-list`, () => HttpResponse.json(groceryList)),
+  http.post(`${API}/grocery-list/items`, async ({ request }) => {
+    const body = (await request.json()) as { ingredient_ids: number[] }
+    for (const id of body.ingredient_ids) {
+      if (!groceryList.some((item) => item.ingredient_id === id)) groceryList.push(groceryItem(id))
+    }
+    groceryList.sort((a, b) => a.display_name.localeCompare(b.display_name))
+    return HttpResponse.json(groceryList)
+  }),
+  http.delete(`${API}/grocery-list/items/:id`, ({ params }) => {
+    groceryList = groceryList.filter((item) => item.ingredient_id !== Number(params['id']))
+    return new HttpResponse(null, { status: 204 })
+  }),
+  http.delete(`${API}/grocery-list`, () => {
+    groceryList = []
+    return new HttpResponse(null, { status: 204 })
+  }),
+
+  http.get(`${API}/me`, () => HttpResponse.json({ preferred_store: preferredStore })),
+  http.patch(`${API}/me`, async ({ request }) => {
+    const body = (await request.json()) as { preferred_store: StoreKey | null }
+    preferredStore = body.preferred_store
+    return HttpResponse.json({ preferred_store: preferredStore })
+  }),
 ]

@@ -1,5 +1,7 @@
 /** Response shapes from the Scrappy API (spec section 11). */
 
+import type { StoreKey } from '../lib/stores'
+
 export interface Ingredient {
   id: number
   name: string
@@ -13,6 +15,18 @@ export interface PantryItem {
   ingredient_id: number
   display_name: string
   added_at: string
+}
+
+/** One ingredient still to buy (F9, spec 10.13). The pantry item's shape, different list. */
+export interface GroceryItem {
+  ingredient_id: number
+  display_name: string
+  added_at: string
+}
+
+/** The caller's own settings. Null means no store has been chosen yet. */
+export interface Me {
+  preferred_store: StoreKey | null
 }
 
 export interface Match {

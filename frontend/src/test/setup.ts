@@ -3,7 +3,7 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll } from 'vitest'
 
-import { resetMatches, resetPantry, resetRecipe } from './handlers'
+import { resetGroceryList, resetMatches, resetMe, resetPantry, resetRecipe } from './handlers'
 import { server } from './server'
 
 // jsdom implements neither of these, and Headless UI's Combobox uses both.
@@ -22,5 +22,7 @@ afterEach(() => {
   resetPantry()
   resetMatches()
   resetRecipe()
+  resetGroceryList()
+  resetMe()
 })
 afterAll(() => server.close())

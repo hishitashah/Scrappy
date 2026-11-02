@@ -257,9 +257,9 @@ Desktop-only. No mobile breakpoints, no touch-specific interactions, no phone la
 | Login | `/login` | Amplify's sign-in, create-account and forgot-password forms, themed toward the palette; the heading links back to the landing page |
 | Home | `/` when signed in | Header: menu button (Home, Log out), app name, mascot; pantry editor with the basics hint; ranked results |
 | Recipe intro | `/recipes/:id` | Back link; photo beside a forest card holding the title, category and cuisine; chevron onward to the ingredients |
-| Recipe ingredients | `/recipes/:id/ingredients` | "INGREDIENTS" heading; forest card listing every ingredient with its measurement, owned and missing visually distinct; "Suggest substitutions" for missing ingredients (F7); chevron onward |
+| Recipe ingredients | `/recipes/:id/ingredients` | "INGREDIENTS" heading; forest card listing every ingredient with its measurement, owned and missing visually distinct; "Add to list" per missing ingredient and "Add all N to list" above (F9); "Suggest substitutions" for missing ingredients (F7); chevron onward |
 | Recipe steps | `/recipes/:id/steps` | "STEP BY STEP INSTRUCTIONS" heading; forest card with the numbered steps; video and source links |
-| Grocery list | `/list` | "GROCERY LIST" heading; forest card with one row per item, each with a store link and a remove ×; the store picker; "Clear list" |
+| Grocery list | `/list` | "GROCERY LIST" heading; the store picker above the card; forest card with one row per item, each with a store link and a remove ×; "Clear list" |
 
 **The recipe flow is paged, not one long page.** Three screens, each with its own URL, following the mockups in `docs/`: a black uppercase heading on the cream field at the left, the content in a rounded forest card at the right, and a circular chevron to advance. One `GET /recipes/{id}` call serves all three pages; the data is already cached by the time the user advances, so moving between them is instant.
 
@@ -916,6 +916,11 @@ An ingredient already on the list shows "On your list" in place of the button, r
 `GET /grocery-list` rather than from component state, so it is still correct after a reload or
 after the item is removed on `/list`.
 
+Above the ingredient list, **"Add all N to list"** adds every missing ingredient not already
+listed, in one request — the endpoint takes up to 50 ids, and a recipe missing four things
+shouldn't cost four clicks. `N` counts only what is still to add, and the button is absent when
+that is zero, so it never offers to do nothing.
+
 "Clear list" is a two-step inline confirm: the button becomes "Clear the whole list?" and clears
 on the second press, resetting if focus moves away. No modal and no dependency, and a long list
 isn't lost to a stray click.
@@ -964,7 +969,11 @@ nothing, never to a broken app.
 - `useGroceryList()`, `useAddGroceryItems()`, `useRemoveGroceryItem()` mirror the pantry hooks,
   including the optimistic removal.
 - `GroceryListPage` at `/list`, reachable from the header menu.
-- The store picker is a Headless UI `Listbox` writing through `PATCH /me`.
+- The store picker is a Headless UI `Listbox` writing through `PATCH /me`. It sits on the cream
+  field above the card, not inside it: the setting is separate from the list, and it is styled
+  like the pantry's combobox rather than like the card's contents.
+- The heading and forest card come from `PageShell`, shared with the three recipe pages, so the
+  frame is decided in one place.
 - With no store chosen, each row shows "Pick a store" pointing at the picker rather than a dead
   link.
 

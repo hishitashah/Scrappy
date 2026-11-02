@@ -5,6 +5,7 @@ import { Navigate, Route, Routes } from 'react-router'
 import { LoginScreen } from './auth/LoginScreen'
 import { RequireAuth } from './auth/RequireAuth'
 import { AppFrame } from './components/AppFrame'
+import { GroceryListPage } from './pages/GroceryListPage'
 import { HomePage } from './pages/HomePage'
 import { LandingPage } from './pages/LandingPage'
 import { RecipeIngredientsPage } from './pages/RecipeIngredientsPage'
@@ -52,6 +53,15 @@ export default function App() {
       />
 
       {/* One page per URL, so back, forward and refresh all behave (spec US-7). */}
+      <Route
+        path="/list"
+        element={
+          <Protected>
+            <GroceryListPage />
+          </Protected>
+        }
+      />
+
       <Route
         path="/recipes/:id"
         element={
