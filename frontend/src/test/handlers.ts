@@ -69,6 +69,9 @@ export function match(overrides: Partial<Match> = {}): Match {
     match: 43,
     missing: ['Oil', 'Salt', 'Soy Sauce', 'Spring Onion'],
     generated: false,
+    // A meal by default, so a test that says nothing about grouping gets the ordinary
+    // case. Sides are opted into with `match({ is_meal: false })`.
+    is_meal: true,
     ...overrides,
   }
 }

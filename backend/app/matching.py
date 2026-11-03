@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.categories import NON_MEAL_CATEGORIES
+
 # Below this, a "match" is really a shopping list, so it isn't shown at all (spec 10.2).
 MIN_MATCH_PERCENT = 50
 
@@ -21,6 +23,8 @@ MATCH_QUERY = text("""
 WITH scored AS (
   SELECT r.id, r.title, r.image_url,
          r.source = 'generated'                                          AS generated,
+         -- A null category is a generated recipe, which is a meal (see app/categories.py).
+         (r.category IS NULL OR r.category <> ALL(:non_meals))            AS is_meal,
          count(*) FILTER (WHERE ri.ingredient_id = ANY(:have))           AS have,
          -- Ingredients the user actually put in their pantry, ignoring assumed staples.
          count(*) FILTER (WHERE ri.ingredient_id = ANY(:pantry))         AS from_pantry,
@@ -32,12 +36,12 @@ WITH scored AS (
   JOIN ingredients i         ON i.id = ri.ingredient_id
   -- The imported catalog is shared; a generated recipe is visible only to its owner (F8).
   WHERE r.source <> 'generated' OR r.created_by = :user_id
-  GROUP BY r.id, r.title, r.image_url, r.source
+  GROUP BY r.id, r.title, r.image_url, r.source, r.category
 )
 SELECT id, title, image_url AS thumbnail_url, have, total,
        round(100.0 * have / total)::int AS match,
        coalesce(missing, '{}')          AS missing,
-       generated
+       generated, is_meal
 FROM scored
 -- An assumed staple raises a recipe's score but never qualifies it on its own: water
 -- appears in 150 recipes, and listing all of them for an unrelated pantry is noise.
@@ -61,6 +65,9 @@ class Match:
     missing: list[str]
     # True for one of this user's own AI-written recipes (F8), which the card labels.
     generated: bool
+    # False for a side, starter or dessert, which the results list groups separately so a
+    # cook who wants dinner can see that none matched (spec 10.2).
+    is_meal: bool
 
 
 def find_matches(
@@ -92,6 +99,7 @@ def find_matches(
             "user_id": user_id,
             "min_match": min_match,
             "limit": limit,
+            "non_meals": list(NON_MEAL_CATEGORIES),
         },
     ).all()
     return [
@@ -104,6 +112,7 @@ def find_matches(
             match=row.match,
             missing=list(row.missing),
             generated=row.generated,
+            is_meal=row.is_meal,
         )
         for row in rows
     ]

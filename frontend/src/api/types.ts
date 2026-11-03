@@ -39,6 +39,8 @@ export interface Match {
   missing: string[]
   /** True for one of your own AI-written recipes (F8), which the card labels. */
   generated: boolean
+  /** False for a side, starter or dessert; the results list groups on it. */
+  is_meal: boolean
 }
 
 export interface RecipeIngredient {
