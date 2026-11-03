@@ -18,6 +18,22 @@ export function ResultsList() {
     <section className="rounded-card bg-forest p-8 text-cream">
       <h2 className="mb-6 font-display text-2xl font-bold tracking-tight">What you can make</h2>
 
+      {/* Offered whenever there is anything to cook from, not only when nothing matched
+          (spec 10.12). Wanting something different is not the same as having nothing: a
+          cook may have twenty matches and fancy none of them. Withheld on an empty pantry,
+          where there is nothing to build from and the endpoint answers 422, and while the
+          panel is loading or has failed, where it would be a second action over a retry. */}
+      {!pantryIsEmpty && !pantry.isPending && !matches.isPending && !matches.isError && (
+        <div className="mb-6 flex flex-col gap-2 border-b border-cream/15 pb-6">
+          {/* Only once something has been shown: asking "nothing here?" above an empty
+              list, which already says nothing is close enough, reads as nonsense. */}
+          {(matches.data?.length ?? 0) > 0 && (
+            <p className="text-sm text-cream/70">Nothing here you fancy?</p>
+          )}
+          <GenerateRecipeButton />
+        </div>
+      )}
+
       {matches.isPending || pantry.isPending ? (
         <ResultsSkeleton />
       ) : matches.isError ? (
@@ -35,16 +51,11 @@ export function ResultsList() {
         // Two distinct empty states (spec US-5), chosen by whether the pantry is empty.
         // Recipes under 50% are hidden, so the second message can't promise "no recipes use
         // these ingredients" — it says what actually helps: add a few more.
-        <div className="flex flex-col gap-4">
-          <p className="text-cream/85">
-            {pantryIsEmpty
-              ? 'Add a few ingredients to see what you can make.'
-              : "Nothing's close enough yet. Add a few more ingredients."}
-          </p>
-          {/* Only with something in the pantry: there is nothing to build a recipe from
-              otherwise, and the endpoint answers 422 (spec 10.12). */}
-          {!pantryIsEmpty && <GenerateRecipeButton />}
-        </div>
+        <p className="text-cream/85">
+          {pantryIsEmpty
+            ? 'Add a few ingredients to see what you can make.'
+            : "Nothing's close enough yet. Add a few more ingredients."}
+        </p>
       ) : (
         <Grouped matches={matches.data} />
       )}
@@ -60,8 +71,8 @@ export function ResultsList() {
  * side scores 100%. One flat list therefore reads as "here is what you can cook" when it
  * actually means "here are some garnishes" — the cook is left to work that out.
  *
- * Grouped, the gap says so itself, and the empty meals group is the honest place to offer
- * a generated recipe: it is the one case where there is genuinely nothing to cook.
+ * Grouped, the gap says so itself. The offer to generate one sits above the groups rather
+ * than inside this one, because it is no longer tied to the gap being there.
  */
 const MEALS = 'Meals'
 const SIDES = 'Sides & extras'
@@ -75,12 +86,9 @@ function Grouped({ matches }: { matches: Match[] }) {
       {/* Always rendered, even empty — that emptiness is the point. */}
       <Group heading={MEALS}>
         {meals.length === 0 ? (
-          <div className="flex flex-col gap-4">
-            <p className="text-cream/85">
-              Nothing you can make as a meal yet — just the bits below.
-            </p>
-            <GenerateRecipeButton />
-          </div>
+          // The message stays and the button does not: the panel already carries one
+          // above, and two of them on a screen is the thing to avoid.
+          <p className="text-cream/85">Nothing you can make as a meal yet — just the bits below.</p>
         ) : (
           <MatchRows matches={meals} label={MEALS} />
         )}

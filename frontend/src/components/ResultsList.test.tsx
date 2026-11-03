@@ -144,7 +144,10 @@ describe('ResultsList', () => {
     expect(screen.getByText('Garlic Bread')).toBeInTheDocument()
   })
 
-  it('does not offer to generate when a meal already matches', async () => {
+  it('still offers to generate when a meal already matches, exactly once', async () => {
+    // The point of the change (spec 10.12): a cook can have matches and want none of
+    // them. getAllByRole rather than getByRole because "exactly one" is the assertion —
+    // the old code had two call sites, and reintroducing one is the failure to catch.
     resetPantry([pantryItem(1)])
     resetMatches([
       match({ id: 1, title: 'Garlic Chicken', is_meal: true }),
@@ -153,8 +156,33 @@ describe('ResultsList', () => {
 
     await renderResults()
 
-    expect(screen.queryByRole('button', { name: GENERATE })).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: GENERATE })).toHaveLength(1)
+    expect(screen.getByText(/nothing here you fancy/i)).toBeInTheDocument()
+    // Meals matched, so the empty-meals message has no business being here.
     expect(screen.queryByText(/nothing you can make as a meal yet/i)).not.toBeInTheDocument()
+  })
+
+  it('offers it once, not twice, when only sides match', async () => {
+    // The case that used to render its own button inside the empty Meals group. The
+    // message stays; a second button would not.
+    resetPantry([pantryItem(1)])
+    resetMatches([match({ title: 'Garlic Bread', is_meal: false })])
+
+    await renderResults()
+
+    expect(screen.getAllByRole('button', { name: GENERATE })).toHaveLength(1)
+    expect(screen.getByText(/nothing you can make as a meal yet/i)).toBeInTheDocument()
+  })
+
+  it('asks "nothing here?" only once something has been shown', async () => {
+    // Above an empty list the question answers itself, and the message below already
+    // says nothing is close enough.
+    resetPantry([pantryItem(1)])
+
+    await renderResults()
+
+    expect(screen.getByRole('button', { name: GENERATE })).toBeInTheDocument()
+    expect(screen.queryByText(/nothing here you fancy/i)).not.toBeInTheDocument()
   })
 
   it('omits the sides group when there are none', async () => {
@@ -169,8 +197,8 @@ describe('ResultsList', () => {
   })
 
   it('files a generated recipe under meals', async () => {
-    // It has no category, and it is the answer offered when no meal matched — so it has
-    // to land in the group that was empty, or the page would still be asking for one.
+    // It has no category, and it is what the cook is offered when no meal matched — so it
+    // has to land in the group that was empty rather than among the sides.
     resetPantry([pantryItem(1)])
     resetMatches([
       match({
@@ -187,6 +215,7 @@ describe('ResultsList', () => {
     const meals = screen.getByRole('list', { name: 'Meals' })
     expect(within(meals).getByText('Garlic Rice Bowl')).toBeInTheDocument()
     expect(within(meals).getByText('AI-generated')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: GENERATE })).not.toBeInTheDocument()
+    // The offer stays up: having generated one is no reason not to want another.
+    expect(screen.getAllByRole('button', { name: GENERATE })).toHaveLength(1)
   })
 })
