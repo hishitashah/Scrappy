@@ -213,7 +213,8 @@ Assumed staples supplement a pantry; they never create one. A user with an empty
 ### AI assistance
 
 **US-18** — As a user missing a few ingredients, I want substitution suggestions, so that I can cook the recipe anyway.
-- The recipe page has a "Suggest substitutions" button, shown only when something is missing.
+- The recipe page has a "Suggest substitutions" button, shown only when something is missing,
+  with a checkbox per gap so the cook can choose which ones to ask about.
 - Each missing ingredient gets at most one suggestion, with a one-line reason.
 - Suggestions prefer ingredients already in the user's pantry, and say which ones those are.
 - Every suggestion is labeled AI-generated.
@@ -257,7 +258,7 @@ Desktop-only. No mobile breakpoints, no touch-specific interactions, no phone la
 | Login | `/login` | Amplify's sign-in, create-account and forgot-password forms, themed toward the palette; the heading links back to the landing page |
 | Home | `/` when signed in | Header: menu button (Home, Log out), app name, mascot; pantry editor with the basics hint; ranked results |
 | Recipe intro | `/recipes/:id` | Back link; photo beside a forest card holding the title, category and cuisine; chevron onward to the ingredients |
-| Recipe ingredients | `/recipes/:id/ingredients` | "INGREDIENTS" heading; forest card listing every ingredient with its measurement, owned and missing visually distinct; "Add to list" per missing ingredient and "Add all N to list" above (F9); "Suggest substitutions" for missing ingredients (F7); chevron onward |
+| Recipe ingredients | `/recipes/:id/ingredients` | "INGREDIENTS" heading; forest card listing every ingredient with its measurement, owned and missing visually distinct; "Add to list" per missing ingredient and "Add all N to list" above (F9); "Suggest substitutions" for missing ingredients, each with a checkbox and an "I have this" control (F7); chevron onward |
 | Recipe steps | `/recipes/:id/steps` | "STEP BY STEP INSTRUCTIONS" heading; forest card with the numbered steps; video and source links |
 | Grocery list | `/list` | "GROCERY LIST" heading; the store picker above the card; forest card with one row per item, each with a store link and a remove ×; "Clear list" |
 
@@ -555,7 +556,7 @@ Every page carries labelled navigation rather than bare arrows: the intro offers
 
 **Backend.** `routers/recipes.py`. The `owned` flag is computed against the user's pantry plus the assumed staples, so water shows as owned without being a pantry row. Ingredients are ordered by `recipe_ingredients.position`.
 
-When at least one ingredient is missing, the page also shows the "Suggest substitutions" button described in 10.11. A generated recipe (F8) renders through the same page and component, with an "AI-generated" badge.
+When at least one ingredient is missing, the page also shows the substitutions panel described in 10.11 — the checkbox list of gaps, the button, and "I have this". A generated recipe (F8) renders through the same page and component, with an "AI-generated" badge.
 
 **Tests.** Backend: a missing ID returns 404; `owned` flags match the pantry; steps and ingredients come back in order; a generated recipe belonging to another user returns 404. Frontend: each of the three pages renders its own content, the chevron advances to the next URL, and a 404 shows "Recipe not found" on every one of them.
 
@@ -810,19 +811,41 @@ In order:
 shows a labeled panel: one suggestion per missing ingredient, each with a one-line reason, with
 suggestions already in the pantry marked. Nothing is requested until the button is pressed.
 
+Above the button, the missing ingredients are listed with a checkbox each, all ticked. Unticking
+one leaves it out of the request, so it is neither asked about nor paid for, and the button reads
+"Suggest substitutions for N" once the set has been narrowed. With nothing ticked the button is
+disabled, because there is no question to ask. A gap is not always a problem worth solving: the
+cook may intend to leave it out.
+
+Each row also offers **"I have this"**, which adds the ingredient to the pantry (F1's endpoint).
+This exists because the commonest reason a gap is not a gap is that the cook owns the ingredient
+and never typed it in. Unticking the box would hide that row only; adding it to the pantry fixes
+the recipe's own "you have N of M", the match percentages, and what the grocery list offers to
+buy. The row then disappears from the panel, because it is no longer missing.
+
 **Backend (`app/ai.py` and `routers/ai.py`)**
 
 - `POST /recipes/{id}/substitutions` loads the recipe, computes the missing ingredients against
   the caller's pantry, and returns `{"suggestions": [{missing_ingredient, suggestion, reason, in_pantry}]}`.
-- A recipe with nothing missing returns `{"suggestions": []}` without calling Anthropic.
+- The body is optional. `{"ingredient_ids": [...]}` is the checkbox selection; an absent body or
+  a null value means every missing ingredient, which is the contract the endpoint had before the
+  checkboxes existed. The ids are **intersected** with what the query found missing, never
+  trusted: an id the caller owns, or one belonging to another recipe, is dropped rather than
+  asked about. What is missing is a fact to be counted, not something a client may assert
+  (section 4). An empty list is a valid choice meaning "ask about nothing".
+- A recipe with nothing missing — or nothing selected — returns `{"suggestions": []}` without
+  calling Anthropic.
 - **Checked in this order:** `AI_ENABLED` (503), then the cache, then the monthly cap (503),
   then the caller's daily count (429). The kill switch comes first because an operator pause
   means paused. The cache comes before the two spend limits because a cached answer costs
   nothing, so neither a used-up daily allowance nor a reached monthly cap should withhold it.
-- **The cache.** The key is `(recipe_id, pantry_hash)`, where `pantry_hash` is a SHA-256 of the
-  caller's sorted pantry ingredient ids. A hit returns the stored payload, spends nothing, and
-  counts nothing against the daily limit. The key does not include the prompt, so a later
-  change to the prompt is followed by `DELETE FROM substitution_cache`.
+- **The cache.** The key is `(recipe_id, pantry_hash)`, where `pantry_hash` is a SHA-256 over
+  the caller's sorted pantry ingredient ids **and** the sorted ids actually asked about, joined
+  by a separator no id can contain. Both halves are the question: keyed on the pantry alone,
+  unticking all but one ingredient and pressing again would be served the previous answer — the
+  cook would ask about the salt and be shown the buttermilk. A hit returns the stored payload,
+  spends nothing, and counts nothing against the daily limit. The key does not include the
+  prompt, so a later change to the prompt is followed by `DELETE FROM substitution_cache`.
 - The call itself: `claude-opus-5-5`, structured outputs against the response model,
   `output_config: {"effort": "low"}`, no streaming, `max_tokens` 4096. Thinking cannot be
   disabled on this model and its tokens count toward `max_tokens`, so a 1024 ceiling would
@@ -1001,7 +1024,7 @@ All endpoints except `/health` require `Authorization: Bearer <Cognito access to
 | DELETE | `/pantry/items/{ingredient_id}` | — | 204 | 401 |
 | GET | `/matches` | `?limit=1–50` (default 20) | 200 `[{id, title, thumbnail_url, have, total, match, missing, generated}]` | 401, 422 |
 | GET | `/recipes/{id}` | — | 200 recipe detail (see 10.3) | 401, 404 |
-| POST | `/recipes/{id}/substitutions` | — | 200 `{suggestions: [{missing_ingredient, suggestion, reason, in_pantry}]}` | 401, 404, 429, 502, 503 |
+| POST | `/recipes/{id}/substitutions` | `{ingredient_ids?: int[] \| null}` | 200 `{suggestions: [{missing_ingredient, suggestion, reason, in_pantry}]}` | 401, 404, 429, 502, 503 |
 | POST | `/recipes/generate` | — | 200 recipe detail plus `generated: true` | 401, 422, 429, 502, 503 |
 | GET | `/grocery-list` | — | 200 `[{ingredient_id, display_name, added_at}]` | 401 |
 | POST | `/grocery-list/items` | `{"ingredient_ids": [int]}`, 1–50 IDs | 200 updated list | 401, 422 |

@@ -74,6 +74,11 @@ export function useAddPantryItems() {
       // bought it, so it is no longer something to buy (spec 10.13). Without this the
       // list keeps showing it until something else happens to refetch.
       void queryClient.invalidateQueries({ queryKey: queryKeys.groceryList })
+      // Every recipe's `owned` flags and "you have 4 of 6" just changed. The prefix
+      // matches every `['recipe', id]`, because an ingredient added from one recipe's
+      // page is owned on all of them — and it is what makes "I have this" remove the
+      // row it was pressed on (spec 10.11).
+      void queryClient.invalidateQueries({ queryKey: ['recipe'] })
     },
   })
 }
@@ -224,8 +229,15 @@ export function useSetPreferredStore() {
  */
 export function useSubstitutions(recipeId: number) {
   return useMutation({
-    mutationFn: () =>
-      apiFetch<SubstitutionsResponse>(`/recipes/${recipeId}/substitutions`, { method: 'POST' }),
+    // The ids are the ticked checkboxes (spec 10.11). The server intersects them with what
+    // it computed as missing, so this narrows the question and cannot widen it — sending a
+    // shorter list is the only way to spend less, which is why the filtering is not done
+    // here after the fact.
+    mutationFn: (ingredientIds: number[]) =>
+      apiFetch<SubstitutionsResponse>(`/recipes/${recipeId}/substitutions`, {
+        method: 'POST',
+        body: JSON.stringify({ ingredient_ids: ingredientIds }),
+      }),
   })
 }
 

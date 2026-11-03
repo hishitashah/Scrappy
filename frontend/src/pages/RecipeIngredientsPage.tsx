@@ -34,7 +34,7 @@ export function RecipeIngredientsPage() {
               {/* Absent once everything missing is listed (F9, spec 10.13). */}
               <AddAllMissingButton ingredients={recipe.ingredients} />
             </div>
-            <ul className="flex flex-col gap-3">
+            <ul aria-label="Ingredients" className="flex flex-col gap-3">
               {recipe.ingredients.map((ingredient) => (
                 <IngredientRow key={ingredient.id} ingredient={ingredient} />
               ))}

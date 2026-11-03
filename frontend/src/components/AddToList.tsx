@@ -30,7 +30,7 @@ export function AddToListButton({ ingredient }: { ingredient: RecipeIngredient }
   if (listedIds.has(ingredient.id)) {
     // A statement, not a control: there is nothing useful a second press could do.
     return (
-      <span className="shrink-0 rounded-full bg-cream/20 px-2.5 py-0.5 text-xs font-semibold">
+      <span className="shrink-0 rounded-full bg-cream/20 px-2 py-0.5 text-[0.6875rem] font-semibold">
         On your list
       </span>
     )
@@ -40,7 +40,7 @@ export function AddToListButton({ ingredient }: { ingredient: RecipeIngredient }
     <button
       type="button"
       onClick={() => addItems.mutate([ingredient.id])}
-      className="shrink-0 rounded-full border border-cream/40 px-2.5 py-0.5 text-xs font-medium transition hover:bg-cream/15"
+      className="shrink-0 rounded-full border border-cream/40 px-2 py-0.5 text-[0.6875rem] font-medium transition hover:bg-cream/15"
     >
       Add to list
     </button>
@@ -62,7 +62,7 @@ export function AddAllMissingButton({ ingredients }: { ingredients: RecipeIngred
       type="button"
       onClick={() => addItems.mutate(pending.map((ingredient) => ingredient.id))}
       disabled={addItems.isPending}
-      className="shrink-0 rounded-full bg-cream px-4 py-1.5 text-sm font-medium text-forest-dark transition hover:bg-cream-deep disabled:opacity-70"
+      className="shrink-0 rounded-full bg-cream px-3.5 py-1 text-xs font-medium text-forest-dark transition hover:bg-cream-deep disabled:opacity-70"
     >
       {/* One request for all of them: the endpoint takes up to 50 ids (spec 10.13). */}
       Add all {pending.length} to list
