@@ -1,6 +1,6 @@
 # Scrappy
 
-[![CI](https://github.com/hishitashah/Scrappy/actions/workflows/ci.yml/badge.svg)](https://github.com/hishitashah/Scrappy/actions/workflows/ci.yml)
+[![CI](https://github.com/hishitashah/Scrappy/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/hishitashah/Scrappy/actions/workflows/ci.yml)
 
 **What can I actually make with what's in my kitchen right now?**
 
