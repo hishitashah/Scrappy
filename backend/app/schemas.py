@@ -91,6 +91,9 @@ class MatchResponse(BaseModel):
     # True for an AI-written recipe (F8), which the card labels. Always this user's own:
     # matching never shows one belonging to anyone else.
     generated: bool
+    # False for a side, starter or dessert. The results list groups on this, so "all I can
+    # make is sides" is visible rather than something the cook has to infer (spec 10.2).
+    is_meal: bool
 
 
 class RecipeIngredientResponse(BaseModel):

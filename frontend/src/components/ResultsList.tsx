@@ -1,21 +1,24 @@
 /** Ranked recipe results (spec 10.2). Updates automatically after any pantry change. */
 
-import { Link } from 'react-router'
+import type { ReactNode } from "react";
+import { Link } from "react-router";
 
-import { useMatches, usePantry } from '../api/hooks'
-import type { Match } from '../api/types'
-import { AiBadge } from './AiNote'
-import { GenerateRecipeButton } from './GenerateRecipeButton'
+import { useMatches, usePantry } from "../api/hooks";
+import type { Match } from "../api/types";
+import { AiBadge } from "./AiNote";
+import { GenerateRecipeButton } from "./GenerateRecipeButton";
 
 export function ResultsList() {
-  const pantry = usePantry()
-  const matches = useMatches()
+  const pantry = usePantry();
+  const matches = useMatches();
 
-  const pantryIsEmpty = (pantry.data ?? []).length === 0
+  const pantryIsEmpty = (pantry.data ?? []).length === 0;
 
   return (
     <section className="rounded-card bg-forest p-8 text-cream">
-      <h2 className="mb-6 font-display text-2xl font-bold tracking-tight">What you can make</h2>
+      <h2 className="mb-6 font-display text-2xl font-bold tracking-tight">
+        What you can make
+      </h2>
 
       {matches.isPending || pantry.isPending ? (
         <ResultsSkeleton />
@@ -37,7 +40,7 @@ export function ResultsList() {
         <div className="flex flex-col gap-4">
           <p className="text-cream/85">
             {pantryIsEmpty
-              ? 'Add a few ingredients to see what you can make.'
+              ? "Add a few ingredients to see what you can make."
               : "Nothing's close enough yet. Add a few more ingredients."}
           </p>
           {/* Only with something in the pantry: there is nothing to build a recipe from
@@ -45,16 +48,84 @@ export function ResultsList() {
           {!pantryIsEmpty && <GenerateRecipeButton />}
         </div>
       ) : (
-        <ul className="flex flex-col gap-3">
-          {matches.data.map((match) => (
-            <li key={match.id}>
-              <RecipeCard match={match} />
-            </li>
-          ))}
-        </ul>
+        <Grouped matches={matches.data} />
       )}
     </section>
-  )
+  );
+}
+
+/**
+ * Meals and sides, separately (spec 10.2).
+ *
+ * The reason is the 50% floor: a main course carries ten or twelve ingredients, so a
+ * dinner-capable pantry scores about 42% on one and it is hidden, while a three-ingredient
+ * side scores 100%. One flat list therefore reads as "here is what you can cook" when it
+ * actually means "here are some garnishes" — the cook is left to work that out.
+ *
+ * Grouped, the gap says so itself, and the empty meals group is the honest place to offer
+ * a generated recipe: it is the one case where there is genuinely nothing to cook.
+ */
+const MEALS = "Meals";
+const SIDES = "Sides & extras";
+
+function Grouped({ matches }: { matches: Match[] }) {
+  const meals = matches.filter((match) => match.is_meal);
+  const sides = matches.filter((match) => !match.is_meal);
+
+  return (
+    <div className="flex flex-col gap-7">
+      {/* Always rendered, even empty — that emptiness is the point. */}
+      <Group heading={MEALS}>
+        {meals.length === 0 ? (
+          <div className="flex flex-col gap-4">
+            <p className="text-cream/85">
+              Nothing you can make as a meal yet — just the bits below.
+            </p>
+            <GenerateRecipeButton />
+          </div>
+        ) : (
+          <MatchRows matches={meals} label={MEALS} />
+        )}
+      </Group>
+
+      {/* Omitted when empty: an empty sides group tells the cook nothing they need. */}
+      {sides.length > 0 && (
+        <Group heading={SIDES}>
+          <MatchRows matches={sides} label={SIDES} />
+        </Group>
+      )}
+    </div>
+  );
+}
+
+function Group({
+  heading,
+  children,
+}: {
+  heading: string;
+  children: ReactNode;
+}) {
+  return (
+    <section>
+      <h3 className="mb-3 text-xs font-semibold tracking-[0.12em] text-cream/70 uppercase">
+        {heading}
+      </h3>
+      {children}
+    </section>
+  );
+}
+
+/** `label` names the list itself: the heading is a sibling, so it cannot do that job. */
+function MatchRows({ matches, label }: { matches: Match[]; label: string }) {
+  return (
+    <ul aria-label={label} className="flex flex-col gap-3">
+      {matches.map((match) => (
+        <li key={match.id}>
+          <RecipeCard match={match} />
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 function RecipeCard({ match }: { match: Match }) {
@@ -80,17 +151,21 @@ function RecipeCard({ match }: { match: Match }) {
         </p>
         {match.missing.length > 0 && (
           <p className="mt-0.5 truncate text-sm text-cream/70">
-            Missing: {match.missing.join(', ')}
+            Missing: {match.missing.join(", ")}
           </p>
         )}
       </div>
     </Link>
-  )
+  );
 }
 
 function ResultsSkeleton() {
   return (
-    <div className="flex flex-col gap-3" aria-hidden="true" data-testid="results-skeleton">
+    <div
+      className="flex flex-col gap-3"
+      aria-hidden="true"
+      data-testid="results-skeleton"
+    >
       {[0, 1, 2, 3, 4, 5].map((row) => (
         <div key={row} className="rounded-3xl bg-cream/10 px-5 py-4">
           <div className="h-4 w-2/5 animate-pulse rounded-full bg-cream/20" />
@@ -98,5 +173,5 @@ function ResultsSkeleton() {
         </div>
       ))}
     </div>
-  )
+  );
 }

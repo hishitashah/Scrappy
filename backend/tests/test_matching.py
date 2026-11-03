@@ -185,3 +185,109 @@ def test_assumed_staples_never_qualify_a_recipe_alone(
 
     assert "Boiled egg" not in {match.title for match in matches}
     assert "Egg fried rice" in {match.title for match in matches}
+
+
+# --- Meals and sides (spec 10.2) -------------------------------------------------------
+#
+# A pantry can be dinner-capable and still return nothing but sides, because the 50% floor
+# favours short recipes and short recipes are sides. `is_meal` is what lets the results
+# list say so. The rule is a lookup on the imported category, not a judgment.
+
+
+def categorised(session: Session, catalog: dict[str, int], title: str, category: str | None) -> int:
+    """A one-ingredient recipe in the given category, so it matches a pantry of garlic."""
+    recipe = Recipe(
+        source="themealdb",
+        source_id=f"cat-{title}",
+        title=title,
+        category=category,
+        steps=["Cook."],
+    )
+    session.add(recipe)
+    session.flush()
+    session.add(
+        RecipeIngredient(
+            recipe_id=recipe.id, ingredient_id=catalog["garlic"], measure="1", position=0
+        )
+    )
+    session.flush()
+    return recipe.id
+
+
+def test_a_main_course_is_a_meal(session: Session, catalog: dict[str, int]) -> None:
+    categorised(session, catalog, "Garlic Chicken", "Chicken")
+
+    matches = find_matches(session, pantry(catalog, "garlic"), TEST_USER_ID)
+
+    assert [(m.title, m.is_meal) for m in matches] == [("Garlic Chicken", True)]
+
+
+def test_sides_starters_and_desserts_are_not_meals(
+    session: Session, catalog: dict[str, int]
+) -> None:
+    """The whole deny-list, so adding a fourth category can't pass unnoticed."""
+    for title, category in (
+        ("Garlic Bread", "Side"),
+        ("Garlic Dip", "Starter"),
+        ("Garlic Ice Cream", "Dessert"),
+    ):
+        categorised(session, catalog, title, category)
+
+    matches = find_matches(session, pantry(catalog, "garlic"), TEST_USER_ID)
+
+    assert {m.title for m in matches} == {"Garlic Bread", "Garlic Dip", "Garlic Ice Cream"}
+    assert all(m.is_meal is False for m in matches)
+
+
+def test_an_unknown_category_counts_as_a_meal(session: Session, catalog: dict[str, int]) -> None:
+    """A deny-list, not an allow-list: a category TheMealDB adds later is dinner.
+
+    The alternative is worse — a new upstream category would silently disappear out of the
+    meals group, which is the one place the cook is looking for something to cook.
+    """
+    categorised(session, catalog, "Garlic Something", "Category We Have Never Seen")
+
+    matches = find_matches(session, pantry(catalog, "garlic"), TEST_USER_ID)
+
+    assert [(m.title, m.is_meal) for m in matches] == [("Garlic Something", True)]
+
+
+def test_a_recipe_with_no_category_is_a_meal(session: Session, catalog: dict[str, int]) -> None:
+    """Which is every generated recipe (F8): it has no category and invents none.
+
+    It matters because generating is what the cook is offered when no meal matched. A
+    generated recipe filed under sides would leave the meals group empty forever, still
+    offering to generate the recipe that was just generated.
+    """
+    categorised(session, catalog, "Uncategorised Garlic", None)
+
+    matches = find_matches(session, pantry(catalog, "garlic"), TEST_USER_ID)
+
+    assert [(m.title, m.is_meal) for m in matches] == [("Uncategorised Garlic", True)]
+
+
+def test_a_generated_recipe_is_a_meal(session: Session, catalog: dict[str, int]) -> None:
+    """The real F8 shape: source 'generated', owned by the caller, no category."""
+    session.add(User(id=TEST_USER_ID))
+    session.flush()
+    recipe = Recipe(
+        source="generated",
+        source_id=None,
+        title="Garlic Rice Bowl",
+        steps=["Cook."],
+        created_by=TEST_USER_ID,
+    )
+    session.add(recipe)
+    session.flush()
+    session.add(
+        RecipeIngredient(
+            recipe_id=recipe.id, ingredient_id=catalog["garlic"], measure="1", position=0
+        )
+    )
+    session.flush()
+
+    matches = find_matches(session, pantry(catalog, "garlic"), TEST_USER_ID)
+
+    assert [(m.title, m.generated, m.is_meal) for m in matches] == [
+        ("Garlic Rice Bowl", True, True)
+    ]

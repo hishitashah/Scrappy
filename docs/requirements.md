@@ -135,7 +135,7 @@ Two consequences are accepted. Links land on a **search results page, not a prod
 
 **Everything AI-generated says so.** Substitutions and generated recipes are labeled in the UI, because a suggestion from a model is a different kind of claim from a recipe a person wrote and an ingredient count computed in SQL.
 
-**Results stop at 50%.** A recipe the user has under half the ingredients for is a shopping list, not a suggestion, so it is not shown at all. The floor lives in `MIN_MATCH_PERCENT` in `backend/app/matching.py`; `find_matches` takes it as a parameter so tests can rank without it. The cost is that a nearly-empty pantry often shows nothing, which the empty state addresses directly by asking for more ingredients.
+**Results stop at 50%.** A recipe the user has under half the ingredients for is a shopping list, not a suggestion, so it is not shown at all. The floor lives in `MIN_MATCH_PERCENT` in `backend/app/matching.py`; `find_matches` takes it as a parameter so tests can rank without it. The cost is that a nearly-empty pantry often shows nothing, which the empty state addresses directly by asking for more ingredients. A second cost, found in use: the floor favours short recipes, and short recipes are sides, so a dinner-capable pantry can return nothing but garnishes. That is why results are grouped into meals and sides (10.2) rather than the floor being lowered — the grouping makes the gap visible without reopening a threshold this document deliberately leaves unresolved (section 16).
 
 **Water is the only assumed staple.** Water comes out of a tap, so making the user type it adds nothing, and 150 of the catalog's 791 recipes call for it. Everything else — salt, oil, flour — is a real shopping decision and still has to be in the pantry to count, so match percentages stay honest. Water is never suggested by the autocomplete, since it always counts already, and the pantry editor shows a hint: "Tip: water is assumed. Add basics like salt and oil for more accurate matches."
 
@@ -467,6 +467,12 @@ Note: only `ingredient_id` is ever sent or stored for a pantry item. There is no
 
 **Behavior.** A results list of up to 20 cards inside the forest results panel, showing only recipes at 50% or above. Each card shows the title, a percentage badge, "You have 3 of 7," and "Missing: oil, salt, soy sauce, spring onion." The list is deliberately typographic: photos appear only once a recipe is opened (10.3), which keeps the ranked list quick to scan and the home page free of twenty remote images. The list updates after every pantry change.
 
+**Meals and sides are grouped separately**, under "Meals" and "Sides & extras", each ranked as above. The reason is an interaction between the 50% floor and recipe length: a main course carries ten or twelve ingredients, so a pantry holding chicken, rice, garlic, oil and salt scores about 42% on one and is hidden, while a three-ingredient side scores 100%. One flat list therefore reads as "here is what you can cook" when it means "here are some garnishes", and the cook is left to work out why dinner is missing.
+
+The "Meals" group is rendered even when empty — that emptiness is the information — and carries the "Generate a recipe" button described in 10.12. "Sides & extras" is omitted when empty, because an empty sides group tells the cook nothing they need.
+
+Whether a recipe is a meal is a lookup on the imported `recipes.category` against the deny-list in `app/categories.py` (`Side`, `Starter`, `Dessert`); everything else, including a category TheMealDB adds later, is a meal. A deny-list rather than an allow-list so that an unrecognised category defaults to appearing among the meals rather than silently vanishing from the one group the cook is searching. A generated recipe (F8) has no category and counts as a meal: it was written from the whole pantry to be cooked as a dish, and it is what the empty meals group offers, so filing it under sides would leave that group empty forever. This is counting, not judgment (section 4) — no model is involved.
+
 **Frontend**
 
 - `ResultsList` and `RecipeCard`.
@@ -476,7 +482,7 @@ Note: only `ingredient_id` is ever sent or stored for a pantry item. There is no
 - Errors show inline with "Try again."
 - Clicking a card navigates to `/recipes/:id`.
 
-**API.** `GET /matches?limit=20` (`limit` 1–50) returns `[{id, title, thumbnail_url, have, total, match, missing, generated}]`. `thumbnail_url` stays in the response, unused by the MVP UI, because the ranked list shows no images; it costs nothing and saves an API change if that ever changes.
+**API.** `GET /matches?limit=20` (`limit` 1–50) returns `[{id, title, thumbnail_url, have, total, match, missing, generated, is_meal}]`. `is_meal` is computed in the matching query itself rather than in Python or the frontend, so the category rule has one home and the client only has to group on a boolean. `thumbnail_url` stays in the response, unused by the MVP UI, because the ranked list shows no images; it costs nothing and saves an API change if that ever changes.
 
 **Backend**
 
@@ -884,9 +890,15 @@ a malformed model response returns 502 rather than a broken payload.
 
 ### 10.12 F8 — AI recipe generation
 
-**Behavior.** The "no overlap" empty state offers "Generate a recipe from my ingredients." Pressing
-it creates a recipe from the pantry, saves it to the user's account, and opens it on the normal
-recipe page with an "AI-generated" badge.
+**Behavior.** "Generate a recipe from my ingredients" is offered in two places, both of them states
+where the cook has ingredients but nothing to cook: the "no overlap" empty state, and an empty
+"Meals" group when only sides matched (10.2). Pressing it creates a recipe from the pantry, saves
+it to the user's account, and opens it on the normal recipe page with an "AI-generated" badge.
+
+The second placement was added after the first proved nearly unreachable: a pantry has to match
+*no* recipe at all to reach the empty state, so a cook with seven ordinary ingredients was never
+offered the feature. A generated recipe counts as a meal, so generating one fills the group that
+offered it.
 
 **Backend**
 
@@ -1022,7 +1034,7 @@ All endpoints except `/health` require `Authorization: Bearer <Cognito access to
 | GET | `/pantry` | — | 200 `[{ingredient_id, display_name, added_at}]` | 401 |
 | POST | `/pantry/items` | `{"ingredient_ids": [int]}`, 1–50 IDs | 200 updated pantry | 401, 422 |
 | DELETE | `/pantry/items/{ingredient_id}` | — | 204 | 401 |
-| GET | `/matches` | `?limit=1–50` (default 20) | 200 `[{id, title, thumbnail_url, have, total, match, missing, generated}]` | 401, 422 |
+| GET | `/matches` | `?limit=1–50` (default 20) | 200 `[{id, title, thumbnail_url, have, total, match, missing, generated, is_meal}]` | 401, 422 |
 | GET | `/recipes/{id}` | — | 200 recipe detail (see 10.3) | 401, 404 |
 | POST | `/recipes/{id}/substitutions` | `{ingredient_ids?: int[] \| null}` | 200 `{suggestions: [{missing_ingredient, suggestion, reason, in_pantry}]}` | 401, 404, 429, 502, 503 |
 | POST | `/recipes/generate` | — | 200 recipe detail plus `generated: true` | 401, 422, 429, 502, 503 |
