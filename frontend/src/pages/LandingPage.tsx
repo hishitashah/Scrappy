@@ -47,7 +47,7 @@ export function LandingPage() {
           </p>
 
           <p className="mt-16 max-w-md text-2xl leading-snug text-ink">
-            Instant meal generator with what you have available!
+            Instant & creative meal generator with what you have available, from all around the world!
           </p>
 
           <div className="mt-8 flex items-center gap-4">
