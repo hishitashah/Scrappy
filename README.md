@@ -6,7 +6,7 @@
 
 Scrappy is a desktop web app that ranks recipes by how many of their ingredients you already have. You type in your pantry, and every result tells you exactly what's missing: *"You have 3 of 7 — missing oil, salt, soy sauce, spring onion."*
 
-Two features call **Claude Opus 5.5** from the backend: it suggests a substitute for each ingredient you're missing, and when nothing in the catalog matches, it writes a recipe from exactly what you have. Both are behind six guardrails and a hard **$5/month** spend cap. Ranking itself is deliberately *not* AI — see [Key decisions](#key-decisions).
+Two features call **Claude Opus 5.5** from the backend: it suggests a substitute for each ingredient you're missing, and when nothing in the catalog matches, it writes a recipe from exactly what you have. Both are behind six guardrails and a hard **$5/month** spend cap.
 
 Most recipe sites start from a recipe and send you shopping. Scrappy works backwards from what you've got.
 
@@ -63,24 +63,6 @@ flowchart LR
 - The **database** is Postgres on Neon's free plan. The recipe catalog is imported from TheMealDB once, so browsing never calls a third-party API.
 - **Anthropic is the only runtime third-party call**, from the backend only, on an explicit button press — never on page load, and never from the browser. The API key lives in SSM Parameter Store and is read once per cold start.
 - **Everything on AWS is defined in Terraform** and deployed by GitHub Actions on every merge to `main`.
-
-## Key decisions
-
-**Matching is a SQL query, not AI: counting for facts, models for judgment.** Ranking recipes by ingredient overlap is deterministic set math — fast, free, explainable, and reproducible. A model would be slower, costlier, and non-deterministic, and the have/need counts the UI depends on would stop coming from one query. AI is reserved for the genuinely fuzzy calls, where there is no single right answer: what to substitute for a missing ingredient, and what to cook when nothing matches. Everything the model returns is validated against a schema, and a refusal or a truncated answer is rejected rather than shown half-complete.
-
-**AI spend is capped in code, not just watched.** A usage ledger records the real token counts from every response, and the cap is checked against it before each call. Cost is recomputed from running token totals rather than accumulated per call — one substitution costs under a cent, so rounding each one to an integer would lose a tenth of the spend every time and a cap fed by rounded-down pennies could never fire.
-
-**Hosting has no fixed monthly cost.** No RDS, no NAT Gateway, no load balancer, no EC2, no public IPv4, no Route 53 hosted zone, no Secrets Manager. Lambda runs outside a VPC and reaches Neon over TLS, which is what removes the NAT Gateway — the single largest hidden cost in a naïve AWS setup.
-
-**Recipe data is imported once; browsing never calls a third-party API.** A script copies TheMealDB into Scrappy's own Postgres. After that, pantry editing, matching and recipe detail are served entirely from our own database: no rate limits, no per-search cost, and the matching logic is ours and testable.
-
-**Ingredient names are parsed; quantities are not stored.** "2 Large Eggs" and "eggs" both resolve to the same catalog row, because a pantry item and a recipe line have to point at the same ingredient for matching to be an overlap count. Quantities are displayed exactly as written and never compared — a quantity-aware pantry would need a unit-conversion layer and is its own project.
-
-**The grocery list links out; it never integrates.** Each row opens that ingredient's search at a supermarket you pick, in a new tab with `rel="noreferrer"`. No retailer API, no key, no cart, no prices, and no call from our server. A chain that changes its URL format degrades to a search that finds nothing, never to a broken app.
-
-**Everything AI-generated says so.** Suggestions sit in a visually distinct panel, generated recipes carry an "AI-generated" badge wherever they appear, and a generated recipe belongs to one user — matching hides it from everyone else.
-
-**Login is required everywhere, and the token is checked on every route.** The access token's RS256 signature is verified against the pool's JWKS, along with `exp`, `iss`, `client_id`, and `token_use == "access"` — so an ID token can't be used as API authorization.
 
 ## Tech stack
 
