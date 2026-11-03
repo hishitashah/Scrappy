@@ -477,7 +477,7 @@ Note: only `ingredient_id` is ever sent or stored for a pantry item. There is no
 
 **Meals and sides are grouped separately**, under "Meals" and "Sides & extras", each ranked as above. The reason is an interaction between the 50% floor and recipe length: a main course carries ten or twelve ingredients, so a pantry holding chicken, rice, garlic, oil and salt scores about 42% on one and is hidden, while a three-ingredient side scores 100%. One flat list therefore reads as "here is what you can cook" when it means "here are some garnishes", and the cook is left to work out why dinner is missing.
 
-The "Meals" group is rendered even when empty — that emptiness is the information — and carries the "Generate a recipe" button described in 10.12. "Sides & extras" is omitted when empty, because an empty sides group tells the cook nothing they need.
+The "Meals" group is rendered even when empty — that emptiness is the information — and says so in words. "Sides & extras" is omitted when empty, because an empty sides group tells the cook nothing they need. The "Generate a recipe" button of 10.12 sits above both groups rather than inside either, since it is offered whenever the pantry holds anything and is no longer tied to a group being empty.
 
 Whether a recipe is a meal is a lookup on the imported `recipes.category` against the deny-list in `app/categories.py` (`Side`, `Starter`, `Dessert`); everything else, including a category TheMealDB adds later, is a meal. A deny-list rather than an allow-list so that an unrecognised category defaults to appearing among the meals rather than silently vanishing from the one group the cook is searching. A generated recipe (F8) has no category and counts as a meal: it was written from the whole pantry to be cooked as a dish, and it is what the empty meals group offers, so filing it under sides would leave that group empty forever. This is counting, not judgment (section 4) — no model is involved.
 
@@ -898,15 +898,24 @@ a malformed model response returns 502 rather than a broken payload.
 
 ### 10.12 F8 — AI recipe generation
 
-**Behavior.** "Generate a recipe from my ingredients" is offered in two places, both of them states
-where the cook has ingredients but nothing to cook: the "no overlap" empty state, and an empty
-"Meals" group when only sides matched (10.2). Pressing it creates a recipe from the pantry, saves
-it to the user's account, and opens it on the normal recipe page with an "AI-generated" badge.
+**Behavior.** "Generate a recipe from my ingredients" sits above the results, and is offered
+whenever the pantry holds at least one ingredient. Pressing it creates a recipe from the pantry,
+saves it to the user's account, and opens it on the normal recipe page with an "AI-generated"
+badge. When recipes did match, a line reading "Nothing here you fancy?" introduces it; with an
+empty result there is nothing to have an opinion about yet, so the line is omitted.
 
-The second placement was added after the first proved nearly unreachable: a pantry has to match
-*no* recipe at all to reach the empty state, so a cook with seven ordinary ingredients was never
-offered the feature. A generated recipe counts as a meal, so generating one fills the group that
-offered it.
+It is withheld only on an empty pantry, where there is nothing to build a recipe from and
+`POST /recipes/generate` answers 422, and while the panel is loading or has failed to load.
+
+This took two corrections to get right, both in the same direction. It was first offered only in
+the "no overlap" empty state, which proved nearly unreachable: a pantry has to match *no* recipe
+at all to get there, so a cook with seven ordinary ingredients never saw the feature. An empty
+"Meals" group was added as a second placement, which helped but kept the same wrong assumption —
+that a generated recipe is what you want when there is nothing to cook. A cook can have twenty
+matches and fancy none of them; wanting something different is not the same as having nothing.
+
+There is exactly one button, rendered by the results panel rather than by either group, because
+two offers of the same thing on one screen is the failure this arrangement replaced.
 
 **Backend**
 

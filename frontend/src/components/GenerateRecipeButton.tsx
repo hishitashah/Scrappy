@@ -1,9 +1,16 @@
 /**
  * "Generate a recipe from my ingredients" (F8, spec 10.12).
  *
- * Shown only in the empty state where the pantry holds something but nothing it holds adds
- * up to a recipe. That is the dead end this feature exists to answer; with an empty pantry
- * there is nothing to cook from, and the endpoint says so with a 422.
+ * Shown whenever the pantry holds at least one ingredient, above the results.
+ *
+ * It used to appear only in dead ends — nothing matched, or nothing matched as a meal — on
+ * the assumption that a generated recipe is what you want when there is nothing to cook.
+ * That reads the need too narrowly: a cook can have twenty matches and fancy none of them,
+ * and wanting something different is not the same as having nothing. Being reachable only
+ * from a dead end also hid the feature entirely from anyone whose pantry matched anything.
+ *
+ * Still withheld on an empty pantry: there is nothing to build from, and the endpoint says
+ * so with a 422.
  *
  * Nothing is requested until the button is pressed: every press spends real money, so
  * there is no request on mount, no prefetch and no retry (spec 14).
