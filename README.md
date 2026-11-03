@@ -176,7 +176,7 @@ The `--legacy-peer-deps` flag works around a peer-resolution crash in npm 10.9.2
 
 Stop the database with `docker compose down`; its data is kept in a Docker volume.
 
-## Roadmap
+## Future Implementation
 
 Deliberately out of the MVP, in rough order of appeal:
 
@@ -184,13 +184,6 @@ Deliberately out of the MVP, in rough order of appeal:
 - **A multi-recipe shopping list** — everything missing across several chosen meals, merged and copyable as plain text, so one trip covers the week.
 - **Dietary filters** and **expiry nudges**, the latter using `pantry_items.added_at`, which is already stored.
 - **Personalization** from history and favorites.
-
-Two shortcuts worth naming rather than leaving to be found:
-
-- **The CI deploy role has `AdministratorAccess`**, with a deliberately narrow trust policy — only this repo, only `main`, via OIDC. The Lambda's own runtime role *is* least-privilege (CloudWatch Logs plus `ssm:GetParameter` on two named parameters). Tightening the deploy role is tracked post-MVP.
-- **No mobile layout.** The app assumes a wide screen, a mouse and a keyboard. A phone layout is a redesign, not a breakpoint, and the MVP chose depth over reach.
-
-A quantity-aware pantry, if ever pursued, needs a unit-conversion layer and should be scoped as its own project rather than added to this one.
 
 ## License
 
