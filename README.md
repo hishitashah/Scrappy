@@ -170,8 +170,6 @@ npm test           # component and unit tests
 npm run lint && npm run typecheck && npm run build
 ```
 
-The AI features stay off locally until you set `AI_ENABLED=true` and an `ANTHROPIC_API_KEY` in `backend/.env`. Everything else — pantry, matching, recipes, the grocery list — works without a key, and the test suite never needs one.
-
 The `--legacy-peer-deps` flag works around a peer-resolution crash in npm 10.9.2 (`Cannot read properties of null (reading 'edgesOut')`). npm 12 fixes it, and `npm ci`, which CI uses, is unaffected.
 
 Stop the database with `docker compose down`; its data is kept in a Docker volume.
