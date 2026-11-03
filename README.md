@@ -6,8 +6,6 @@
 
 Scrappy is a desktop web app that ranks recipes by how many of their ingredients you already have. You type in your pantry, and every result tells you exactly what's missing: *"You have 3 of 7 — missing oil, salt, soy sauce, spring onion."*
 
-Two features call **Claude Opus 5.5** from the backend: it suggests a substitute for each ingredient you're missing, and when nothing in the catalog matches, it writes a recipe from exactly what you have. Both are behind six guardrails and a hard **$5/month** spend cap.
-
 Most recipe sites start from a recipe and send you shopping. Scrappy works backwards from what you've got.
 
 ## Live demo
