@@ -13,11 +13,11 @@ describe('LandingPage', () => {
     )
 
     expect(screen.getByRole('heading', { name: 'SCRAPPY' })).toBeInTheDocument()
+    expect(screen.getByText(/Most recipe sites send you shopping/)).toBeInTheDocument()
     expect(
-      screen.getByText(/Most recipe sites send you shopping/),
-    ).toBeInTheDocument()
-    expect(
-      screen.getByText(/Instant meal generator with what you have available/),
+      screen.getByText(
+        /Instant & creative meal generator with what you have available, from all around the world!/,
+      ),
     ).toBeInTheDocument()
     // No password field anywhere: signing in is a destination, not the front door.
     expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument()
