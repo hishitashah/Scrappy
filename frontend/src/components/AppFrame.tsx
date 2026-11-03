@@ -19,7 +19,7 @@ export function AppFrame({ children }: { children: ReactNode }) {
           <div>
             <h1 className="font-brand text-8xl leading-none font-normal text-forest">Scrappy</h1>
             <p className="mt-6 max-w-sm text-base text-muted">
-              Quick, simple meals from what you already have!
+              Quick, simple meals from what you already have, from all around the world!
             </p>
           </div>
 
