@@ -16,13 +16,19 @@ app = FastAPI(title="Scrappy API")
 # One JSON log line per request, and a safe body for unexpected errors (spec 10.9).
 install_observability(app)
 
+# Every HTTP method the API serves. A method missing from this list does not produce a
+# 405: the browser's preflight fails, the request is never sent, and the feature silently
+# does nothing — which is how `PATCH /me` shipped broken in M8. `tests/test_cors.py` holds
+# this list to the routes the app actually has, and to the Function URL's copy of it.
+CORS_METHODS = ["GET", "POST", "PATCH", "DELETE"]
+
 # CORS lives in exactly one place (spec 10.7): the Lambda Function URL handles it in
 # production, so enabling it here too would send duplicate headers that browsers reject.
 if settings.env == "local":
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:5173"],
-        allow_methods=["GET", "POST", "DELETE"],
+        allow_methods=CORS_METHODS,
         allow_headers=["authorization", "content-type"],
     )
 

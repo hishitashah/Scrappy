@@ -165,7 +165,7 @@ resource "aws_lambda_function_url" "api" {
   # because two sets of headers make browsers reject the response (spec 10.7).
   cors {
     allow_origins = ["https://${aws_cloudfront_distribution.frontend.domain_name}", "http://localhost:5173"]
-    allow_methods = ["GET", "POST", "DELETE"]
+    allow_methods = ["GET", "POST", "PATCH", "DELETE"]
     allow_headers = ["authorization", "content-type"]
     max_age       = 3600
   }
