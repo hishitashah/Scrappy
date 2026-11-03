@@ -116,11 +116,11 @@ describe('PantryEditor', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't remove that ingredient")
   })
 
-  it('says water is assumed and asks for the other basics', async () => {
+  it('names the assumed staples and asks for everything else', async () => {
     await renderPantry()
 
     expect(
-      screen.getByText('Tip: water is assumed. Add basics like salt and oil for more accurate matches.'),
+      screen.getByText('Tip: water, salt, pepper, oil and butter are assumed. Add everything else you have.'),
     ).toBeInTheDocument()
   })
 

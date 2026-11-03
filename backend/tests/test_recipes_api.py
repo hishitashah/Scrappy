@@ -16,7 +16,12 @@ def fill_pantry(session: Session, catalog: dict[str, int], *names: str) -> None:
 def test_matches_ranks_recipes(
     client: TestClient, session: Session, catalog: dict[str, int], fixture_recipes: dict[str, int]
 ) -> None:
-    """Water is assumed, so Boiled egg counts 2 of 3. Egg fried rice is below the 50% floor."""
+    """Staples are assumed, so both recipes clear the floor (spec section 4).
+
+    Boiled egg is egg, water and salt, all of them owned or assumed: 3 of 3. Egg fried
+    rice adds oil and salt to the three real pantry items, reaching 5 of 7 — it was hidden
+    at 43% before staples were assumed, and it is the case that prompted assuming them.
+    """
     fill_pantry(session, catalog, "egg", "rice", "garlic")
 
     response = client.get("/matches")
@@ -24,9 +29,11 @@ def test_matches_ranks_recipes(
     assert response.status_code == 200
     body = response.json()
     assert [(row["title"], row["have"], row["total"], row["match"]) for row in body] == [
-        ("Boiled egg", 2, 3, 67),
+        ("Boiled egg", 3, 3, 100),
+        ("Egg fried rice", 5, 7, 71),
     ]
-    assert body[0]["missing"] == ["Salt"]
+    assert body[0]["missing"] == []
+    assert body[1]["missing"] == ["Soy Sauce", "Spring Onion"]
 
 
 def test_assumed_water_never_creates_matches_on_its_own(
@@ -45,12 +52,20 @@ def test_matches_is_empty_for_an_empty_pantry(
 def test_matches_hides_recipes_below_the_floor(
     client: TestClient, session: Session, catalog: dict[str, int], fixture_recipes: dict[str, int]
 ) -> None:
-    """A pantry of flour alone makes Pancakes (1/1) but not Fried chicken (1/5)."""
+    """Fried chicken is chicken, flour, oil, salt and pepper — three of them assumed.
+
+    A pantry of flour alone therefore reaches 4 of 5 and clears the floor, where before
+    staples it was 1 of 5. Boiled egg stays hidden: its only real ingredient is the egg,
+    which this cook does not have, so the `from_pantry > 0` guard excludes it.
+    """
     fill_pantry(session, catalog, "flour")
 
-    titles = [row["title"] for row in client.get("/matches").json()]
+    rows = client.get("/matches").json()
 
-    assert titles == ["Pancakes"]
+    assert [(row["title"], row["have"], row["total"]) for row in rows] == [
+        ("Pancakes", 1, 1),
+        ("Fried chicken", 4, 5),
+    ]
 
 
 def test_matches_limit_is_validated(
@@ -74,12 +89,13 @@ def test_recipe_detail_marks_owned_ingredients(
     body = response.json()
     assert body["title"] == "Boiled egg"
     assert body["steps"] == ["Cook."]
-    # Ingredients come back in recipe order, not alphabetically.
-    # Water is owned without being in the pantry, because it is assumed (spec section 4).
+    # Ingredients come back in recipe order, not alphabetically. Water and salt are owned
+    # without being in the pantry, because both are assumed staples (spec section 4) —
+    # only the egg here is something the cook actually typed in.
     assert [(i["display_name"], i["owned"]) for i in body["ingredients"]] == [
         ("Egg", True),
         ("Water", True),
-        ("Salt", False),
+        ("Salt", True),
     ]
     assert body["ingredients"][0]["measure"] == "1"
 

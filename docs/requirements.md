@@ -135,9 +135,17 @@ Two consequences are accepted. Links land on a **search results page, not a prod
 
 **Everything AI-generated says so.** Substitutions and generated recipes are labeled in the UI, because a suggestion from a model is a different kind of claim from a recipe a person wrote and an ingredient count computed in SQL.
 
+**A generated recipe is exempt from the floor.** The floor hides the imported catalog's hundreds of recipes a cook can't make; one written for this cook is not among them, and scores low only because F8 seasons from staples they may not own (10.12). Filtering it out would mean generating a recipe, being taken to it, going back, and finding it gone from the results that offered it. The exemption is `generated OR ...` in the matching query's `WHERE`, and applies to nothing else.
+
 **Results stop at 50%.** A recipe the user has under half the ingredients for is a shopping list, not a suggestion, so it is not shown at all. The floor lives in `MIN_MATCH_PERCENT` in `backend/app/matching.py`; `find_matches` takes it as a parameter so tests can rank without it. The cost is that a nearly-empty pantry often shows nothing, which the empty state addresses directly by asking for more ingredients. A second cost, found in use: the floor favours short recipes, and short recipes are sides, so a dinner-capable pantry can return nothing but garnishes. That is why results are grouped into meals and sides (10.2) rather than the floor being lowered — the grouping makes the gap visible without reopening a threshold this document deliberately leaves unresolved (section 16).
 
-**Water is the only assumed staple.** Water comes out of a tap, so making the user type it adds nothing, and 150 of the catalog's 791 recipes call for it. Everything else — salt, oil, flour — is a real shopping decision and still has to be in the pantry to count, so match percentages stay honest. Water is never suggested by the autocomplete, since it always counts already, and the pantry editor shows a hint: "Tip: water is assumed. Add basics like salt and oil for more accurate matches."
+**Water, salt, pepper, cooking oil and butter are assumed staples.** Each is cheap, keeps, and is in almost every kitchen, so making the user type it adds nothing. Between them they appear in a large share of the catalog — salt alone in 302 of 791 recipes, olive oil in 210, butter in 189, water in 150 — which is the point: measured against a pantry of chicken, flour, garlic, oil, rice, salt and sugar, assuming them takes the matches from 27 recipes (5 of them meals) to 80 (36 meals). A chicken-and-rice dish listing chicken, rice, water, salt, pepper, oil, onion, garlic and stock went from 22% and hidden to 67% and offered.
+
+**Perishables are deliberately excluded.** Onion (254 recipes) and garlic (297) are the next most common ingredients and would lift scores further, but a cook may genuinely not have an onion tonight. The app's one promise is that a recipe it offers is a recipe they can cook, and being wrong in that direction costs more than a hidden recipe does.
+
+The names are canonical and were chosen against the real catalog, because the near-misses are brutal: `salt cod` is a fish, `peanut butter` and `butternut squash` are not butter, `red pepper` and `green pepper` are produce, and `rose water` is nothing to do with the tap. Specialist oils — sesame, peanut, coconut — are flavours a dish is built around rather than something to assume. Assumed staples are never suggested by the autocomplete, since they always count already, and the pantry editor shows a hint: "Tip: water, salt, pepper, oil and butter are assumed. Add everything else you have."
+
+Assumed staples supplement a pantry and never create one: a recipe still needs at least one real pantry ingredient to appear at all (the `from_pantry > 0` guard), so an empty pantry matches nothing.
 
 Assumed staples supplement a pantry; they never create one. A user with an empty pantry still matches nothing, because "you can make anything that only needs water" is not a useful answer. The list lives in `backend/app/staples.py`, mirrored by `ASSUMED_STAPLES` in the frontend's `ingredientFilter.ts`, and adding to it is a spec change.
 
@@ -224,7 +232,7 @@ Assumed staples supplement a pantry; they never create one. A user with an empty
 **US-19** — As a user whose pantry matches nothing, I want a recipe generated from what I have, so that the app is useful in the worst case.
 - The "no overlap" empty state offers "Generate a recipe from my ingredients."
 - Generation only ever runs when the user presses that button.
-- The generated recipe uses only pantry ingredients, and has a title, ingredients with measurements, and numbered steps.
+- The generated recipe is built from pantry ingredients plus at most a few basic staples, and has a title, ingredients with measurements, and steps (numbered by the page, not stored numbered).
 - It is saved to the user's account, labeled AI-generated everywhere it appears, and visible only to them.
 - It appears in that user's later matches like any other recipe.
 - The same daily and monthly limits apply, with the same messages.
@@ -911,15 +919,28 @@ offered it.
 - The call: `claude-opus-5-5`, structured outputs (title, ingredients with measurements,
   steps), `output_config: {"effort": "low"}`, `max_tokens` 8192 (see 10.11 on thinking
   tokens).
-- The prompt gives the pantry and asks for a recipe that uses only those ingredients, with a short
-  title, measurements, and numbered steps.
+- The prompt gives the pantry and asks for a recipe **built around** those ingredients, with a
+  short title and measurements. It may also use water and a short list of basic staples — salt,
+  pepper, cooking oil or butter, common aromatics such as onion or garlic — and nothing further:
+  no stocks, sauces, fresh herbs or other produce, the line being whether it implies a shopping
+  trip. Every staple used must be listed as an ingredient.
+
+  An earlier version asked for the pantry "and nothing else". It was honest and useless: chicken
+  plus rice produced boiled chicken and plain rice, because that is all it permits. A cook who
+  typed two ingredients has not sworn they own only two, and the missing rows now carry "I have
+  this" (10.11) for the salt they never typed in.
+- **Steps are saved unnumbered.** The prompt asks the model not to number them, and `clean_steps`
+  in `app/steps.py` strips any numbering that arrives anyway, because the model adds "1." however
+  it is asked. The recipe page renders an `<ol>`, so an unstripped step shows as "1. 1. Place the
+  chicken in a pot." The same helper cleans imported recipes, which TheMealDB numbers
+  inconsistently.
 - Every returned ingredient name is normalized through `app/normalize.py` and mapped to the
   catalog. A name that maps to nothing is created as an ingredient, exactly as the import does.
   Two lines of one recipe that normalize to the same ingredient collapse to one, and a name that
   normalizes to nothing at all (punctuation, whitespace) is dropped rather than stored: the
   catalog is shared, and a nameless row would reach every user's autocomplete.
-- **An ingredient the cook doesn't have is kept, not dropped.** The prompt asks for the pantry
-  and nothing else, but models add salt or oil anyway. The line is saved as returned, so the
+- **An ingredient the cook doesn't have is kept, not dropped.** This is now expected rather than
+  tolerated, since the prompt permits staples. The line is saved as returned, so the
   recipe reports "you have 7 of 8" and the method still reads correctly. Filtering to pantry
   ingredients would guarantee a 100% match while leaving "season with salt" in step 3 referring
   to an ingredient no longer listed — a recipe that lies about itself. Matching tells the truth;

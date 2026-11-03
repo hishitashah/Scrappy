@@ -291,3 +291,62 @@ def test_a_generated_recipe_is_a_meal(session: Session, catalog: dict[str, int])
     assert [(m.title, m.generated, m.is_meal) for m in matches] == [
         ("Garlic Rice Bowl", True, True)
     ]
+
+
+def test_a_generated_recipe_is_never_hidden_by_the_floor(
+    session: Session, catalog: dict[str, int]
+) -> None:
+    """It was written for this cook, so "too far from making it" does not apply.
+
+    The floor exists to hide the imported catalog's hundreds of recipes the cook can't
+    make. A generated recipe scores low for a different reason — F8 seasons from staples
+    they may not own (spec 10.12) — and hiding it would mean generating a recipe, being
+    taken to it, going back, and finding it gone from the results that offered it.
+    """
+    session.add(User(id=TEST_USER_ID))
+    session.flush()
+    recipe = Recipe(
+        source="generated",
+        source_id=None,
+        title="Chicken and Rice Pilaf",
+        steps=["Cook."],
+        created_by=TEST_USER_ID,
+    )
+    session.add(recipe)
+    session.flush()
+    # One owned ingredient out of five: 20%, far under the 50% floor.
+    for position, name in enumerate(("garlic", "egg", "rice", "salt", "water")):
+        session.add(
+            RecipeIngredient(
+                recipe_id=recipe.id,
+                ingredient_id=catalog[name],
+                measure="1",
+                position=position,
+            )
+        )
+    session.flush()
+
+    matches = find_matches(session, pantry(catalog, "garlic"), TEST_USER_ID)
+
+    assert [(m.title, m.match) for m in matches] == [("Chicken and Rice Pilaf", 20)]
+
+
+def test_an_imported_recipe_at_the_same_score_is_still_hidden(
+    session: Session, catalog: dict[str, int]
+) -> None:
+    """The exemption is for generated recipes only, not a hole in the floor."""
+    recipe = Recipe(source="themealdb", source_id="floor-1", title="Someone Else's", steps=["Go."])
+    session.add(recipe)
+    session.flush()
+    for position, name in enumerate(("garlic", "egg", "rice", "salt", "water")):
+        session.add(
+            RecipeIngredient(
+                recipe_id=recipe.id,
+                ingredient_id=catalog[name],
+                measure="1",
+                position=position,
+            )
+        )
+    session.flush()
+
+    assert find_matches(session, pantry(catalog, "garlic"), TEST_USER_ID) == []

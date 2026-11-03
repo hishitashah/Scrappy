@@ -40,8 +40,10 @@ recipes ranked by how many of each recipe's ingredients they already have.
 - No mobile/responsive layout, no camera or photo input, no quantity or unit tracking,
   no demo account. These are deliberate MVP exclusions (spec section 4), not gaps to
   fill in.
-- Water is the only assumed staple (`backend/app/staples.py`, mirrored in the frontend's
-  `ingredientFilter.ts`). Adding another is a spec change, not a judgement call.
+- Assumed staples are water, salt, pepper, cooking oil and butter (`backend/app/staples.py`,
+  mirrored in the frontend's `ingredientFilter.ts`, held together by `tests/test_staples.py`).
+  Perishables are deliberately excluded — onion and garlic are the tempting ones, and a cook
+  may genuinely not have an onion. Adding another is a spec change, not a judgement call.
 
 ## Commands
 

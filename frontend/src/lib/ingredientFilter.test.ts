@@ -8,11 +8,13 @@ const catalog: Ingredient[] = [
   { id: 1, name: 'egg', display_name: 'Eggs', aliases: ['eggs'], recipe_count: 218 },
   { id: 2, name: 'rice', display_name: 'Rice', aliases: [], recipe_count: 35 },
   { id: 3, name: 'garlic', display_name: 'Garlic', aliases: ['garlic clove'], recipe_count: 300 },
+  // Deliberately not an oil: oils are assumed staples and so are never suggested, which
+  // would make the alias and ranking tests below pass for the wrong reason.
   {
     id: 4,
-    name: 'olive oil',
-    display_name: 'Olive Oil',
-    aliases: ['extra virgin olive oil'],
+    name: 'plain flour',
+    display_name: 'Plain Flour',
+    aliases: ['all purpose flour'],
     recipe_count: 120,
   },
   { id: 5, name: 'tomato', display_name: 'Tomatoes', aliases: [], recipe_count: 90 },
@@ -59,8 +61,8 @@ describe('filterIngredients', () => {
   })
 
   it('matches aliases', () => {
-    expect(names(filterIngredients(catalog, 'extra virgin', none).suggestions)).toEqual([
-      'Olive Oil',
+    expect(names(filterIngredients(catalog, 'all purpose', none).suggestions)).toEqual([
+      'Plain Flour',
     ])
   })
 
@@ -70,8 +72,11 @@ describe('filterIngredients', () => {
   })
 
   it('ranks prefix matches above substring matches', () => {
-    const result = filterIngredients(catalog, 'oil', none)
-    expect(names(result.suggestions)).toEqual(['Olive Oil'])
+    // "Eggs" and "Egg Plants" both start with the query; "Free-range Egg, Beaten" only
+    // contains it, so it comes last however many recipes use it. Within the prefix tier
+    // the more useful ingredient wins, which is why Eggs beats Egg Plants.
+    const result = filterIngredients(catalog, 'egg', none)
+    expect(names(result.suggestions)).toEqual(['Eggs', 'Egg Plants', 'Free-range Egg, Beaten'])
   })
 
   it('offers "did you mean" for a near miss, and no ordinary suggestions', () => {

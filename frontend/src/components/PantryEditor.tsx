@@ -33,7 +33,7 @@ export function PantryEditor() {
       />
 
       <p className="mt-3 text-sm text-muted">
-        Tip: water is assumed. Add basics like salt and oil for more accurate matches.
+        Tip: water, salt, pepper, oil and butter are assumed. Add everything else you have.
       </p>
 
       {removeItem.isError && (

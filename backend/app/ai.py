@@ -166,20 +166,30 @@ def build_prompt(recipe_title: str, missing: Sequence[str], pantry: Sequence[str
 
 
 def build_generation_prompt(pantry: Sequence[str]) -> str:
-    """Ask for a recipe built from this pantry and nothing else.
+    """Ask for a recipe built around this pantry, seasoned from a short list of staples.
 
-    "Only these" is a request, not a guarantee: models add salt and oil anyway. Nothing
-    here tries to prevent that, because the saved recipe reports what it actually needs
-    and matching says "you have 7 of 8" — an honest answer the cook can act on. Silently
-    dropping the extra line would leave step 3 seasoning with salt that isn't listed.
+    An earlier version asked for the listed ingredients and nothing else. It was honest
+    and useless: a pantry of chicken and rice produced boiled chicken and plain rice,
+    because that is all "nothing else" permits. Most kitchens hold salt and oil, and a
+    cook who typed in two ingredients has not sworn they own only two.
+
+    So the staples below are allowed and anything further is not — the line being a
+    shopping trip. Every staple used is still listed as an ingredient, so the recipe
+    reports "you have 3 of 6" and the missing rows carry "I have this" (spec 10.11) for
+    the salt the cook never typed in. Silently leaving them out would be the bad version:
+    step 3 would season with salt that appears nowhere.
     """
     pantry_list = ", ".join(pantry) if pantry else "nothing"
     return (
-        f"A cook has these ingredients and nothing else: {pantry_list}\n\n"
-        "Write one recipe they could actually make. Use only the ingredients listed, "
-        "assuming they have water, a stove and basic equipment. Give the dish a short "
-        "name, list each ingredient with how much to use, and write the method as "
-        "numbered steps. Keep it to something a home cook can follow."
+        f"A cook has these ingredients: {pantry_list}\n\n"
+        "Write one recipe built around them. You may also use water and a few basic "
+        "pantry staples even if they are not listed — salt, pepper, cooking oil or "
+        "butter, and common aromatics such as onion or garlic — because most kitchens "
+        "have them. Do not use anything beyond that: no stocks, special sauces, fresh "
+        "herbs or other produce, since those would mean a shopping trip. Give the dish a "
+        "short name, list every ingredient with how much to use, including any staples "
+        "you added, and write the method as a list of steps. Do not number the steps "
+        "yourself — the app numbers them. Keep it to something a home cook can follow."
     )
 
 

@@ -56,8 +56,8 @@ def ai_settings(**overrides: object) -> Settings:
 
 RESULT = AiResult(
     suggestions=[
-        Suggestion(missing_ingredient="Oil", suggestion="Butter", reason="Both carry heat."),
-        Suggestion(missing_ingredient="Soy Sauce", suggestion="Salt", reason="Salt alone works."),
+        Suggestion(missing_ingredient="Soy Sauce", suggestion="Fish Sauce", reason="Both salt."),
+        Suggestion(missing_ingredient="Spring Onion", suggestion="Garlic", reason="Both allium."),
     ],
     input_tokens=600,
     output_tokens=450,
@@ -80,7 +80,11 @@ def ai(client: TestClient, fake: FakeClient) -> Iterator[TestClient]:
 
 @pytest.fixture
 def stocked_pantry(session: Session, fixture_recipes: dict[str, int], catalog: dict[str, int]):
-    """Three of Egg fried rice's seven ingredients, leaving four missing."""
+    """Three of Egg fried rice's seven ingredients.
+
+    Two are missing: oil and salt are assumed staples (spec section 4), so what is left
+    to ask about is the soy sauce and the spring onion.
+    """
     for name in ("rice", "egg", "garlic"):
         session.add(PantryItem(user_id=TEST_USER_ID, ingredient_id=catalog[name]))
     session.flush()
@@ -92,7 +96,7 @@ def test_a_first_call_asks_the_model_and_a_second_is_served_from_cache(
 ) -> None:
     first = ai.post(f"/recipes/{stocked_pantry}/substitutions")
     assert first.status_code == 200
-    assert [s["suggestion"] for s in first.json()["suggestions"]] == ["Butter", "Salt"]
+    assert [s["suggestion"] for s in first.json()["suggestions"]] == ["Fish Sauce", "Garlic"]
     assert fake.calls == 1
 
     second = ai.post(f"/recipes/{stocked_pantry}/substitutions")
@@ -108,7 +112,8 @@ def test_the_prompt_gets_the_missing_ingredients_and_the_whole_pantry(
     ai.post(f"/recipes/{stocked_pantry}/substitutions")
 
     assert fake.last_prompt_args["recipe_title"] == "Egg fried rice"
-    assert set(fake.last_prompt_args["missing"]) == {"Oil", "Salt", "Soy Sauce", "Spring Onion"}
+    # Oil and salt are in this recipe but are assumed staples, so they are not gaps.
+    assert set(fake.last_prompt_args["missing"]) == {"Soy Sauce", "Spring Onion"}
     assert set(fake.last_prompt_args["pantry"]) == {"Rice", "Egg", "Garlic"}
 
 
@@ -137,7 +142,7 @@ def test_a_different_pantry_is_a_different_question(
     ai.post(f"/recipes/{stocked_pantry}/substitutions")
     assert fake.calls == 1
 
-    session.add(PantryItem(user_id=TEST_USER_ID, ingredient_id=catalog["salt"]))
+    session.add(PantryItem(user_id=TEST_USER_ID, ingredient_id=catalog["flour"]))
     session.flush()
 
     ai.post(f"/recipes/{stocked_pantry}/substitutions")
@@ -206,7 +211,7 @@ def test_the_daily_limit_returns_429(
     # A different pantry, so the cache can't answer and the limit has to.
     session.execute(text("DELETE FROM pantry_items WHERE user_id = :u"), {"u": TEST_USER_ID})
     session.flush()
-    session.add(PantryItem(user_id=TEST_USER_ID, ingredient_id=catalog["salt"]))
+    session.add(PantryItem(user_id=TEST_USER_ID, ingredient_id=catalog["flour"]))
 
     second = client.post(f"/recipes/{stocked_pantry}/substitutions")
     assert second.status_code == 429
@@ -294,8 +299,10 @@ def test_a_suggestion_already_in_the_pantry_is_marked(
     owned = FakeClient(
         AiResult(
             suggestions=[
-                Suggestion(missing_ingredient="Oil", suggestion="Garlic", reason="Pretend."),
-                Suggestion(missing_ingredient="Salt", suggestion="Nutmeg", reason="Pretend."),
+                Suggestion(missing_ingredient="Soy Sauce", suggestion="Garlic", reason="Pretend."),
+                Suggestion(
+                    missing_ingredient="Spring Onion", suggestion="Nutmeg", reason="Pretend."
+                ),
             ],
             input_tokens=10,
             output_tokens=10,
@@ -317,7 +324,7 @@ def test_a_suggestion_for_something_not_missing_is_dropped(
     confused = FakeClient(
         AiResult(
             suggestions=[
-                Suggestion(missing_ingredient="Oil", suggestion="Butter", reason="Fine."),
+                Suggestion(missing_ingredient="Soy Sauce", suggestion="Fish Sauce", reason="Fine."),
                 Suggestion(missing_ingredient="Rice", suggestion="Quinoa", reason="Not missing."),
                 Suggestion(
                     missing_ingredient="Saffron", suggestion="Turmeric", reason="Not asked."
@@ -332,7 +339,7 @@ def test_a_suggestion_for_something_not_missing_is_dropped(
 
     suggestions = client.post(f"/recipes/{stocked_pantry}/substitutions").json()["suggestions"]
 
-    assert [s["missing_ingredient"] for s in suggestions] == ["Oil"]
+    assert [s["missing_ingredient"] for s in suggestions] == ["Soy Sauce"]
 
 
 def test_an_unknown_recipe_returns_404(ai: TestClient, fake: FakeClient) -> None:
@@ -393,8 +400,8 @@ def test_an_unusable_answer_is_still_charged_for(
 # --- Choosing what to ask about (the checkboxes, spec 10.11) ---------------------------
 #
 # The panel lets a cook untick a missing ingredient, because a gap is not always a problem
-# worth solving: they may be happy to leave the salt out, or — the case that prompted this
-# — they may simply not have typed in something they do own. The selection reaches the API
+# worth solving: they may be happy to leave the spring onion out, or — the case that prompted
+# this — they may simply not have typed in something they do own. The selection reaches the API
 # as `ingredient_ids`, and these tests pin down the two things that matter about it: that
 # it narrows the question and never widens it, and that the cache tells two different
 # questions apart.
@@ -406,7 +413,7 @@ def test_no_body_still_asks_about_everything_missing(
     """The contract the button had before the checkboxes existed, kept intact."""
     ai.post(f"/recipes/{stocked_pantry}/substitutions")
 
-    assert set(fake.last_prompt_args["missing"]) == {"Oil", "Salt", "Soy Sauce", "Spring Onion"}
+    assert set(fake.last_prompt_args["missing"]) == {"Soy Sauce", "Spring Onion"}
 
 
 def test_an_explicit_null_selection_also_asks_about_everything(
@@ -416,20 +423,20 @@ def test_an_explicit_null_selection_also_asks_about_everything(
     response = ai.post(f"/recipes/{stocked_pantry}/substitutions", json={"ingredient_ids": None})
 
     assert response.status_code == 200
-    assert set(fake.last_prompt_args["missing"]) == {"Oil", "Salt", "Soy Sauce", "Spring Onion"}
+    assert set(fake.last_prompt_args["missing"]) == {"Soy Sauce", "Spring Onion"}
 
 
 def test_a_selection_narrows_the_question_to_the_ticked_ingredients(
     ai: TestClient, fake: FakeClient, stocked_pantry: int, catalog: dict[str, int]
 ) -> None:
-    """Two of the four gaps ticked, so the model is asked about two."""
+    """One of the two gaps ticked, so the model is asked about one."""
     response = ai.post(
         f"/recipes/{stocked_pantry}/substitutions",
-        json={"ingredient_ids": [catalog["oil"], catalog["soy sauce"]]},
+        json={"ingredient_ids": [catalog["soy sauce"]]},
     )
 
     assert response.status_code == 200
-    assert set(fake.last_prompt_args["missing"]) == {"Oil", "Soy Sauce"}
+    assert set(fake.last_prompt_args["missing"]) == {"Soy Sauce"}
     # The pantry is unchanged by the selection: what could stand in is still everything
     # the cook owns, whatever they chose to ask about.
     assert set(fake.last_prompt_args["pantry"]) == {"Rice", "Egg", "Garlic"}
@@ -456,24 +463,24 @@ def test_a_selection_cannot_ask_about_an_ingredient_the_cook_owns(
     """
     response = ai.post(
         f"/recipes/{stocked_pantry}/substitutions",
-        json={"ingredient_ids": [catalog["rice"], catalog["oil"]]},
+        json={"ingredient_ids": [catalog["rice"], catalog["soy sauce"]]},
     )
 
     assert response.status_code == 200
-    assert set(fake.last_prompt_args["missing"]) == {"Oil"}
+    assert set(fake.last_prompt_args["missing"]) == {"Soy Sauce"}
 
 
 def test_a_selection_cannot_ask_about_an_ingredient_from_another_recipe(
     ai: TestClient, fake: FakeClient, stocked_pantry: int, catalog: dict[str, int]
 ) -> None:
-    """Pepper is missing from the cook's kitchen, but it is not in this recipe."""
+    """Chicken is missing from the cook's kitchen, but it belongs to Fried chicken."""
     response = ai.post(
         f"/recipes/{stocked_pantry}/substitutions",
-        json={"ingredient_ids": [catalog["pepper"], catalog["oil"]]},
+        json={"ingredient_ids": [catalog["chicken"], catalog["soy sauce"]]},
     )
 
     assert response.status_code == 200
-    assert set(fake.last_prompt_args["missing"]) == {"Oil"}
+    assert set(fake.last_prompt_args["missing"]) == {"Soy Sauce"}
 
 
 def test_asking_about_a_different_subset_is_a_different_question(
@@ -481,28 +488,28 @@ def test_asking_about_a_different_subset_is_a_different_question(
 ) -> None:
     """The cache key covers the selection, not just the pantry.
 
-    Without that, unticking everything but the salt would be served the answer about the
-    oil — the same pantry, the same recipe, a different question.
+    Without that, unticking everything but the spring onion would be served the answer
+    about the soy sauce — the same pantry, the same recipe, a different question.
     """
     ai.post(
         f"/recipes/{stocked_pantry}/substitutions",
-        json={"ingredient_ids": [catalog["oil"]]},
+        json={"ingredient_ids": [catalog["soy sauce"]]},
     )
     assert fake.calls == 1
 
     ai.post(
         f"/recipes/{stocked_pantry}/substitutions",
-        json={"ingredient_ids": [catalog["salt"]]},
+        json={"ingredient_ids": [catalog["spring onion"]]},
     )
     assert fake.calls == 2
-    assert set(fake.last_prompt_args["missing"]) == {"Salt"}
+    assert set(fake.last_prompt_args["missing"]) == {"Spring Onion"}
 
 
 def test_asking_about_the_same_subset_twice_is_paid_for_once(
     ai: TestClient, fake: FakeClient, stocked_pantry: int, catalog: dict[str, int]
 ) -> None:
     """The cache still has to work once the selection is part of the key."""
-    chosen = {"ingredient_ids": [catalog["oil"], catalog["salt"]]}
+    chosen = {"ingredient_ids": [catalog["soy sauce"], catalog["spring onion"]]}
 
     first = ai.post(f"/recipes/{stocked_pantry}/substitutions", json=chosen)
     second = ai.post(f"/recipes/{stocked_pantry}/substitutions", json=chosen)
@@ -517,11 +524,11 @@ def test_the_order_ingredients_are_ticked_in_does_not_change_the_question(
     """The same two boxes, ticked the other way round, is the same question."""
     ai.post(
         f"/recipes/{stocked_pantry}/substitutions",
-        json={"ingredient_ids": [catalog["oil"], catalog["salt"]]},
+        json={"ingredient_ids": [catalog["soy sauce"], catalog["spring onion"]]},
     )
     ai.post(
         f"/recipes/{stocked_pantry}/substitutions",
-        json={"ingredient_ids": [catalog["salt"], catalog["oil"]]},
+        json={"ingredient_ids": [catalog["spring onion"], catalog["soy sauce"]]},
     )
 
     assert fake.calls == 1

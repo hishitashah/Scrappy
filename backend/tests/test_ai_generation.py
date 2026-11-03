@@ -179,21 +179,22 @@ def test_a_pantry_of_nothing_but_water_is_still_empty(
 def test_an_off_pantry_ingredient_is_kept_and_reported_as_missing(
     client: TestClient, session: Session, pantry: dict[str, int]
 ) -> None:
-    """The prompt asks for the pantry and nothing else; models add salt anyway.
+    """The prompt permits a few staples, and a model reaches past them anyway.
 
+    Soy sauce is neither in the pantry nor an assumed staple, so it is a genuine gap.
     Keeping the line is the honest answer: the recipe reports what it really needs, and
     the method still makes sense. Dropping it would promise a recipe the cook can make
-    while leaving "season with salt" in step 2 referring to nothing.
+    while leaving "add a splash of soy" in step 2 referring to nothing.
     """
     app.dependency_overrides[get_settings] = lambda: ai_settings()
     app.dependency_overrides[get_generation_client] = lambda: FakeGenerationClient(
-        result(("Rice", "2 cups"), ("Salt", "1 tsp"))
+        result(("Rice", "2 cups"), ("Soy Sauce", "1 tbsp"))
     )
 
     body = client.post("/recipes/generate").json()
 
     owned = {ingredient["display_name"]: ingredient["owned"] for ingredient in body["ingredients"]}
-    assert owned == {"Rice": True, "Salt": False}
+    assert owned == {"Rice": True, "Soy Sauce": False}
 
 
 def test_two_lines_that_mean_one_ingredient_collapse(
@@ -476,3 +477,40 @@ def test_a_generated_ingredient_can_be_added_to_a_pantry(
 
     assert response.status_code == 200
     assert session.get(Ingredient, ingredient_id) is not None
+
+
+def test_a_numbered_method_is_saved_unnumbered(
+    ai: TestClient, fake: FakeGenerationClient, pantry: None
+) -> None:
+    """The page renders an `<ol>`, so a model's own "1." is numbered twice (spec 10.12).
+
+    The prompt asks it not to number them, but models do it anyway — this is the part
+    that actually holds, so it is tested against a client that numbers.
+    """
+    fake.result = GenerationResult(
+        recipe=GeneratedRecipe(
+            title="Chicken and Rice",
+            lines=[GeneratedLine(display_name="Rice", measure="2 cups")],
+            steps=["1. Place the chicken in a pot.", "2. Simmer for 20 minutes.", "3."],
+        ),
+        input_tokens=700,
+        output_tokens=900,
+    )
+
+    response = ai.post("/recipes/generate")
+
+    assert response.status_code == 200
+    # The bare "3." was a heading with nothing under it, and is not a step at all.
+    assert response.json()["steps"] == [
+        "Place the chicken in a pot.",
+        "Simmer for 20 minutes.",
+    ]
+
+
+def test_the_prompt_does_not_ask_for_numbered_steps() -> None:
+    """Belt as well as braces: the cleaning is the guarantee, but asking still helps."""
+    from app.ai import build_generation_prompt
+
+    prompt = build_generation_prompt(["Rice", "Chicken"])
+
+    assert "Do not number the steps" in prompt

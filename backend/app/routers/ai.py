@@ -46,6 +46,7 @@ from app.schemas import (
 )
 from app.settings import Settings, get_settings
 from app.staples import staple_ingredient_ids
+from app.steps import clean_steps
 from app.usage import (
     GENERATION,
     SUBSTITUTIONS,
@@ -284,7 +285,11 @@ def generate_recipe(
         # treats nulls as distinct, and every generated recipe is its own thing.
         source_id=None,
         title=result.recipe.title,
-        steps=list(result.recipe.steps),
+        # Asking the model not to number them is not enough on its own: it writes "1." at
+        # the start of each step regardless, and the page renders an <ol>, so the cook
+        # reads "1. 1. Place the chicken in a pot". Imported recipes go through the same
+        # cleaning for the same reason (app/steps.py).
+        steps=clean_steps(result.recipe.steps),
         created_by=user_id,
     )
     session.add(recipe)

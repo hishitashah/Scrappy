@@ -15,21 +15,86 @@ export const MAX_DID_YOU_MEAN = 3
 /**
  * Ingredients the app assumes everyone has (spec section 4), mirroring
  * `backend/app/staples.py`. They are never suggested, because they always count already.
+ *
+ * Kept in the same order as that file, and held to it by `backend/tests/test_staples.py`:
+ * a name in one list and not the other is an ingredient the matcher counts but the
+ * autocomplete still offers, or the reverse.
  */
-export const ASSUMED_STAPLES = new Set(['water'])
+export const ASSUMED_STAPLES = new Set([
+  'water',
+  'salt',
+  'kosher salt',
+  'sea salt',
+  'pepper',
+  'black pepper',
+  'oil',
+  'olive oil',
+  'vegetable oil',
+  'sunflower oil',
+  'rapeseed oil',
+  'canola oil',
+  'butter',
+  'unsalted butter',
+  'salted butter',
+])
 
 const STOPWORDS = new Set([
-  'a', 'an', 'the', 'of', 'some',
-  'cup', 'cups', 'tbsp', 'tablespoon', 'tablespoons', 'tsp', 'teaspoon', 'teaspoons',
-  'oz', 'ounce', 'ounces', 'lb', 'lbs', 'pound', 'pounds',
-  'g', 'gram', 'grams', 'kg', 'ml', 'l', 'litre', 'litres', 'liter', 'liters',
-  'pinch', 'dash', 'handful', 'clove', 'cloves', 'can', 'cans', 'tin', 'tins',
-  'large', 'small', 'medium', 'fresh', 'chopped', 'sliced', 'diced', 'minced',
+  'a',
+  'an',
+  'the',
+  'of',
+  'some',
+  'cup',
+  'cups',
+  'tbsp',
+  'tablespoon',
+  'tablespoons',
+  'tsp',
+  'teaspoon',
+  'teaspoons',
+  'oz',
+  'ounce',
+  'ounces',
+  'lb',
+  'lbs',
+  'pound',
+  'pounds',
+  'g',
+  'gram',
+  'grams',
+  'kg',
+  'ml',
+  'l',
+  'litre',
+  'litres',
+  'liter',
+  'liters',
+  'pinch',
+  'dash',
+  'handful',
+  'clove',
+  'cloves',
+  'can',
+  'cans',
+  'tin',
+  'tins',
+  'large',
+  'small',
+  'medium',
+  'fresh',
+  'chopped',
+  'sliced',
+  'diced',
+  'minced',
 ])
 
 /** "2 Large Eggs" -> "eggs": drop quantities, units and filler words. */
 export function stripQuantityWords(query: string): string {
-  const words = query.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean)
+  const words = query
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
   const kept: string[] = []
   for (const word of words) {
     // Only skip leading noise: "cup" inside "cup cake" should survive once real words start.

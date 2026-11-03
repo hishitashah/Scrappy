@@ -46,7 +46,11 @@ FROM scored
 -- An assumed staple raises a recipe's score but never qualifies it on its own: water
 -- appears in 150 recipes, and listing all of them for an unrelated pantry is noise.
 WHERE from_pantry > 0
-  AND 100.0 * have / total >= :min_match
+  -- The floor hides the imported catalog's 600 recipes this cook can't make. A recipe
+  -- written for this cook is not one of those, and may legitimately score low: F8 seasons
+  -- from a few staples they may not own (spec 10.12). Filtering it out would mean
+  -- generating a recipe, being shown it, going back, and finding it gone.
+  AND (generated OR 100.0 * have / total >= :min_match)
 ORDER BY match DESC, have DESC, title ASC
 LIMIT :limit
 """)
@@ -83,6 +87,8 @@ def find_matches(
     `ingredient_ids` is the real pantry; `staple_ids` are assumed staples (spec section 4),
     which count toward a recipe's score but never qualify a recipe by themselves.
     `min_match` drops recipes the user is too far from making; pass 0 to rank everything.
+    It never drops one of this user's own generated recipes, which are written for them
+    and so are never "too far" — see the query's own comment.
 
     A pure function of its arguments: no HTTP, no auth, no request state, so it can be
     tested directly. An empty pantry matches nothing, and never reaches the database.

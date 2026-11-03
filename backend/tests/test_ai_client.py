@@ -257,12 +257,20 @@ def test_an_sdk_failure_during_generation_records_no_spend() -> None:
     assert (raised.value.input_tokens, raised.value.output_tokens) == (0, 0)
 
 
-def test_the_generation_prompt_names_the_pantry_and_forbids_the_rest() -> None:
+def test_the_generation_prompt_names_the_pantry_and_draws_the_line_at_staples() -> None:
+    """The prompt allows seasoning and forbids a shopping trip (spec 10.12).
+
+    Asking for the pantry "and nothing else" produced boiled chicken and plain rice, so
+    basic staples are now permitted. The limit still has to be stated, or the model writes
+    an ordinary recipe and the cook is short six things.
+    """
     prompt = build_generation_prompt(["Rice", "Egg", "Garlic"])
 
     assert "Rice, Egg, Garlic" in prompt
-    # Without this the model writes an ordinary recipe and the cook is short four things.
-    assert "only the ingredients listed" in prompt
+    assert "salt, pepper, cooking oil" in prompt
+    assert "shopping trip" in prompt
+    # Staples that go unlisted leave the method seasoning with something invisible.
+    assert "including any staples you added" in prompt
 
 
 def test_there_is_no_generation_client_without_a_key(monkeypatch: pytest.MonkeyPatch) -> None:

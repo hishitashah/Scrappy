@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 from app.db import get_engine
 from app.models import Ingredient, PantryItem, Recipe, RecipeIngredient
 from app.normalize import load_aliases, normalize, singularize, strip_accents
+from app.steps import clean_steps
 
 BASE_URL = "https://www.themealdb.com/api/json/v1/1"
 SOURCE = "themealdb"
@@ -85,20 +86,19 @@ def _clean(value: Any) -> str | None:
 _PUNCTUATION_FOR_DISPLAY = re.compile(r"[^a-z0-9 ]+")
 _WHITESPACE_FOR_DISPLAY = re.compile(r"\s+")
 
-_BARE_NUMBER = re.compile(r"^\d+\s*[.):\-]?$")
-# A prefix only counts as numbering when punctuation and whitespace follow, so a step that
-# genuinely opens with a quantity ("2 eggs, beaten") keeps its number.
-_NUMBER_PREFIX = re.compile(r"^\d+\s*[.):\-]\s+")
-
 
 def split_steps(instructions: str | None) -> list[str]:
-    """Split instructions into steps, dropping blanks and any numbering in the source."""
+    """Split instructions into steps, dropping blanks and any numbering in the source.
+
+    The "STEP 1" handling is TheMealDB's alone; the rest is `clean_steps`, shared with the
+    generated recipes of F8, which arrive numbered for the same reason.
+    """
     if not instructions:
         return []
-    steps = []
+    lines = []
     for line in instructions.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
         step = line.strip()
-        if not step or _BARE_NUMBER.match(step):
+        if not step:
             continue
 
         lowered = step.lower()
@@ -109,10 +109,8 @@ def split_steps(instructions: str | None) -> list[str]:
             if digits.isdigit():
                 step = rest.strip()
 
-        step = _NUMBER_PREFIX.sub("", step).strip()
-        if step:
-            steps.append(step)
-    return steps
+        lines.append(step)
+    return clean_steps(lines)
 
 
 def parse_meal(meal: dict[str, Any]) -> ParsedRecipe:
