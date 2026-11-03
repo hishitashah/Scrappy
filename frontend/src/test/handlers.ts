@@ -168,6 +168,17 @@ export const handlers = [
     // The real endpoint deletes these from the grocery list in the same transaction
     // (spec 10.13). Mirrored here, or a test for that behaviour would prove nothing.
     groceryList = groceryList.filter((item) => !body.ingredient_ids.includes(item.ingredient_id))
+    // `owned` is computed from the pantry server-side, so an ingredient just added is
+    // owned the next time the recipe is read. Mirrored for the same reason: without it,
+    // "I have this" could appear to work while the row it removed never came back owned.
+    if (recipeDetail) {
+      recipeDetail = {
+        ...recipeDetail,
+        ingredients: recipeDetail.ingredients.map((ingredient) =>
+          body.ingredient_ids.includes(ingredient.id) ? { ...ingredient, owned: true } : ingredient,
+        ),
+      }
+    }
     return HttpResponse.json(pantry)
   }),
   http.delete(`${API}/pantry/items/:id`, ({ params }) => {

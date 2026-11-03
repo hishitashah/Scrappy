@@ -132,6 +132,21 @@ class SubstitutionResponse(BaseModel):
     in_pantry: bool
 
 
+class SubstitutionsRequest(BaseModel):
+    """Which of a recipe's missing ingredients to ask about (spec 10.11).
+
+    Absent, or null, means every missing ingredient — which is what the button did before
+    the checkboxes existed, and what a client that doesn't send a body still gets.
+
+    A selection can only ever narrow that set. The ids are checked against what the
+    matching query says is missing, so an id the cook actually owns, or one belonging to
+    another recipe, is dropped rather than asked about: what is missing is a fact to be
+    counted, not something the client gets to assert (spec section 4).
+    """
+
+    ingredient_ids: list[int] | None = None
+
+
 class SubstitutionsResponse(BaseModel):
     """Wrapped in an object rather than returned as a bare list, so that fields can be
     added later (a cache flag, a model name) without breaking the client."""

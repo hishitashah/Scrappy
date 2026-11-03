@@ -38,7 +38,12 @@ from app.routers.recipes import (
     owned_ingredient_ids,
     recipe_ingredients,
 )
-from app.schemas import RecipeDetailResponse, SubstitutionResponse, SubstitutionsResponse
+from app.schemas import (
+    RecipeDetailResponse,
+    SubstitutionResponse,
+    SubstitutionsRequest,
+    SubstitutionsResponse,
+)
 from app.settings import Settings, get_settings
 from app.staples import staple_ingredient_ids
 from app.usage import (
@@ -73,8 +78,13 @@ def suggest_substitutions(
     user_id: CurrentUser,
     settings: AppSettings,
     client: AiClient,
+    payload: SubstitutionsRequest | None = None,
 ) -> SubstitutionsResponse:
-    """Suggest a stand-in for each of this recipe's missing ingredients."""
+    """Suggest a stand-in for this recipe's missing ingredients, or the chosen few.
+
+    The body is optional: no body means every missing ingredient, which is what the
+    button did before the panel had checkboxes.
+    """
     if not settings.ai_enabled:
         raise PAUSED
 
@@ -97,17 +107,28 @@ def suggest_substitutions(
         .order_by(RecipeIngredient.position)
     ).all()
 
-    missing = [row.display_name for row in rows if row.id not in owned_ids]
+    missing_rows = [row for row in rows if row.id not in owned_ids]
+
+    # The checkboxes narrow the question, and can only narrow it (spec 10.11). Intersected
+    # with what the query found missing rather than trusted: a client asking about an
+    # ingredient the cook owns, or one from another recipe entirely, gets it dropped here.
+    # An empty list is a real choice — ask about nothing — and falls into the free answer
+    # below without spending anything.
+    if payload is not None and payload.ingredient_ids is not None:
+        chosen = set(payload.ingredient_ids)
+        missing_rows = [row for row in missing_rows if row.id in chosen]
+
+    missing = [row.display_name for row in missing_rows]
     # The whole pantry, not just this recipe's share of it: the point of asking is to be
     # told about something the cook already has, which may be nowhere in the recipe.
     pantry = [row.display_name for row in pantry_rows]
 
-    # Nothing to substitute: a free, honest answer (spec 10.11).
+    # Nothing to substitute, or nothing asked about: a free, honest answer (spec 10.11).
     if not missing:
         return SubstitutionsResponse(suggestions=[])
 
-    # Keyed on the real pantry, which is what the question depends on.
-    key = pantry_hash(sorted(pantry_ids))
+    # Keyed on the pantry and on what was asked about, which together are the question.
+    key = pantry_hash(sorted(pantry_ids), [row.id for row in missing_rows])
 
     cached = cached_payload(session, recipe.id, key)
     if cached is not None:

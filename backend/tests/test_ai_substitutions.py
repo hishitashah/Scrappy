@@ -388,3 +388,140 @@ def test_an_unusable_answer_is_still_charged_for(
 
     # Nothing was cached: there is no answer worth keeping.
     assert session.execute(text("SELECT count(*) FROM substitution_cache")).scalar() == 0
+
+
+# --- Choosing what to ask about (the checkboxes, spec 10.11) ---------------------------
+#
+# The panel lets a cook untick a missing ingredient, because a gap is not always a problem
+# worth solving: they may be happy to leave the salt out, or — the case that prompted this
+# — they may simply not have typed in something they do own. The selection reaches the API
+# as `ingredient_ids`, and these tests pin down the two things that matter about it: that
+# it narrows the question and never widens it, and that the cache tells two different
+# questions apart.
+
+
+def test_no_body_still_asks_about_everything_missing(
+    ai: TestClient, fake: FakeClient, stocked_pantry: int
+) -> None:
+    """The contract the button had before the checkboxes existed, kept intact."""
+    ai.post(f"/recipes/{stocked_pantry}/substitutions")
+
+    assert set(fake.last_prompt_args["missing"]) == {"Oil", "Salt", "Soy Sauce", "Spring Onion"}
+
+
+def test_an_explicit_null_selection_also_asks_about_everything(
+    ai: TestClient, fake: FakeClient, stocked_pantry: int
+) -> None:
+    """A client sending `null` means "no choice made", not "choose nothing"."""
+    response = ai.post(f"/recipes/{stocked_pantry}/substitutions", json={"ingredient_ids": None})
+
+    assert response.status_code == 200
+    assert set(fake.last_prompt_args["missing"]) == {"Oil", "Salt", "Soy Sauce", "Spring Onion"}
+
+
+def test_a_selection_narrows_the_question_to_the_ticked_ingredients(
+    ai: TestClient, fake: FakeClient, stocked_pantry: int, catalog: dict[str, int]
+) -> None:
+    """Two of the four gaps ticked, so the model is asked about two."""
+    response = ai.post(
+        f"/recipes/{stocked_pantry}/substitutions",
+        json={"ingredient_ids": [catalog["oil"], catalog["soy sauce"]]},
+    )
+
+    assert response.status_code == 200
+    assert set(fake.last_prompt_args["missing"]) == {"Oil", "Soy Sauce"}
+    # The pantry is unchanged by the selection: what could stand in is still everything
+    # the cook owns, whatever they chose to ask about.
+    assert set(fake.last_prompt_args["pantry"]) == {"Rice", "Egg", "Garlic"}
+
+
+def test_ticking_nothing_costs_nothing(
+    ai: TestClient, fake: FakeClient, stocked_pantry: int
+) -> None:
+    """An empty selection is a real choice, and it is answered for free."""
+    response = ai.post(f"/recipes/{stocked_pantry}/substitutions", json={"ingredient_ids": []})
+
+    assert response.status_code == 200
+    assert response.json() == {"suggestions": []}
+    assert fake.calls == 0
+
+
+def test_a_selection_cannot_ask_about_an_ingredient_the_cook_owns(
+    ai: TestClient, fake: FakeClient, stocked_pantry: int, catalog: dict[str, int]
+) -> None:
+    """Rice is in the pantry, so it is not missing, so it is not a question.
+
+    What is missing is counted, not asserted by the client (spec section 4). A client that
+    sends an owned id gets it dropped rather than answered.
+    """
+    response = ai.post(
+        f"/recipes/{stocked_pantry}/substitutions",
+        json={"ingredient_ids": [catalog["rice"], catalog["oil"]]},
+    )
+
+    assert response.status_code == 200
+    assert set(fake.last_prompt_args["missing"]) == {"Oil"}
+
+
+def test_a_selection_cannot_ask_about_an_ingredient_from_another_recipe(
+    ai: TestClient, fake: FakeClient, stocked_pantry: int, catalog: dict[str, int]
+) -> None:
+    """Pepper is missing from the cook's kitchen, but it is not in this recipe."""
+    response = ai.post(
+        f"/recipes/{stocked_pantry}/substitutions",
+        json={"ingredient_ids": [catalog["pepper"], catalog["oil"]]},
+    )
+
+    assert response.status_code == 200
+    assert set(fake.last_prompt_args["missing"]) == {"Oil"}
+
+
+def test_asking_about_a_different_subset_is_a_different_question(
+    ai: TestClient, fake: FakeClient, stocked_pantry: int, catalog: dict[str, int]
+) -> None:
+    """The cache key covers the selection, not just the pantry.
+
+    Without that, unticking everything but the salt would be served the answer about the
+    oil — the same pantry, the same recipe, a different question.
+    """
+    ai.post(
+        f"/recipes/{stocked_pantry}/substitutions",
+        json={"ingredient_ids": [catalog["oil"]]},
+    )
+    assert fake.calls == 1
+
+    ai.post(
+        f"/recipes/{stocked_pantry}/substitutions",
+        json={"ingredient_ids": [catalog["salt"]]},
+    )
+    assert fake.calls == 2
+    assert set(fake.last_prompt_args["missing"]) == {"Salt"}
+
+
+def test_asking_about_the_same_subset_twice_is_paid_for_once(
+    ai: TestClient, fake: FakeClient, stocked_pantry: int, catalog: dict[str, int]
+) -> None:
+    """The cache still has to work once the selection is part of the key."""
+    chosen = {"ingredient_ids": [catalog["oil"], catalog["salt"]]}
+
+    first = ai.post(f"/recipes/{stocked_pantry}/substitutions", json=chosen)
+    second = ai.post(f"/recipes/{stocked_pantry}/substitutions", json=chosen)
+
+    assert second.json() == first.json()
+    assert fake.calls == 1
+
+
+def test_the_order_ingredients_are_ticked_in_does_not_change_the_question(
+    ai: TestClient, fake: FakeClient, stocked_pantry: int, catalog: dict[str, int]
+) -> None:
+    """The same two boxes, ticked the other way round, is the same question."""
+    ai.post(
+        f"/recipes/{stocked_pantry}/substitutions",
+        json={"ingredient_ids": [catalog["oil"], catalog["salt"]]},
+    )
+    ai.post(
+        f"/recipes/{stocked_pantry}/substitutions",
+        json={"ingredient_ids": [catalog["salt"], catalog["oil"]]},
+    )
+
+    assert fake.calls == 1

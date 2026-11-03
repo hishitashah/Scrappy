@@ -81,17 +81,17 @@ flowchart LR
 
 ## Testing
 
-**370 tests** — 258 pytest, 112 Vitest — written alongside each feature rather than after it.
+**386 tests** — 267 pytest, 119 Vitest — written alongside each feature rather than after it.
 
 | Backend (pytest) | Tests | | Frontend (Vitest) | Tests |
 |---|---:|---|---|---:|
 | Ingredient normalization | 62 | | Ingredient filter & store URLs | 24 |
-| AI features & spend guardrails | 58 | | Grocery list & add-to-list | 20 |
-| API endpoints | 50 | | Recipe pages | 19 |
+| AI features & spend guardrails | 67 | | Grocery list & add-to-list | 20 |
+| API endpoints | 50 | | Recipe pages | 20 |
 | Config, logging & schema | 36 | | Pantry editor & results | 17 |
-| Matching & catalog import | 32 | | AI panels | 16 |
+| Matching & catalog import | 32 | | AI panels | 22 |
 | Auth & token rejection | 20 | | Routing, HTTP & errors | 16 |
-| **Total** | **258** | | **Total** | **112** |
+| **Total** | **267** | | **Total** | **119** |
 
 **11 of the auth tests are invalid-token scenarios**: expired, wrong user pool, wrong app client, bad signature, an ID token used as an access token, a missing or malformed `Authorization` header, and a token missing required claims.
 

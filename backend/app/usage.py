@@ -54,13 +54,22 @@ def utc_day(now: datetime | None = None) -> date:
     return (now or datetime.now(UTC)).date()
 
 
-def pantry_hash(ingredient_ids: Sequence[int]) -> str:
-    """A stable fingerprint of a pantry, for the cache key.
+def pantry_hash(ingredient_ids: Sequence[int], asked_ingredient_ids: Sequence[int] = ()) -> str:
+    """A stable fingerprint of a substitution question, for the cache key.
 
-    Sorted first, so the same pantry entered in a different order is the same question.
+    Two things make the question: the pantry, which decides what could stand in, and which
+    missing ingredients were actually asked about, which the checkboxes choose (spec
+    10.11). Both belong in the key. Keyed on the pantry alone, unticking an ingredient and
+    pressing again would be served the previous answer — the cook would ask about the salt
+    and be shown the buttermilk.
+
+    Each side is sorted and deduplicated, so the same question asked in a different order
+    is the same question. The two are joined by a separator no id can contain, so a pantry
+    of [1] asked about [2] cannot collide with a pantry of [1, 2] asked about nothing.
     """
-    joined = ",".join(str(ingredient_id) for ingredient_id in sorted(set(ingredient_ids)))
-    return hashlib.sha256(joined.encode()).hexdigest()
+    pantry = ",".join(str(ingredient_id) for ingredient_id in sorted(set(ingredient_ids)))
+    asked = ",".join(str(ingredient_id) for ingredient_id in sorted(set(asked_ingredient_ids)))
+    return hashlib.sha256(f"{pantry}|{asked}".encode()).hexdigest()
 
 
 def cost_cents(input_tokens: int, output_tokens: int, settings: Settings) -> int:
