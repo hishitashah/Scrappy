@@ -1,24 +1,22 @@
 /** Ranked recipe results (spec 10.2). Updates automatically after any pantry change. */
 
-import type { ReactNode } from "react";
-import { Link } from "react-router";
+import type { ReactNode } from 'react'
+import { Link } from 'react-router'
 
-import { useMatches, usePantry } from "../api/hooks";
-import type { Match } from "../api/types";
-import { AiBadge } from "./AiNote";
-import { GenerateRecipeButton } from "./GenerateRecipeButton";
+import { useMatches, usePantry } from '../api/hooks'
+import type { Match } from '../api/types'
+import { AiBadge } from './AiNote'
+import { GenerateRecipeButton } from './GenerateRecipeButton'
 
 export function ResultsList() {
-  const pantry = usePantry();
-  const matches = useMatches();
+  const pantry = usePantry()
+  const matches = useMatches()
 
-  const pantryIsEmpty = (pantry.data ?? []).length === 0;
+  const pantryIsEmpty = (pantry.data ?? []).length === 0
 
   return (
     <section className="rounded-card bg-forest p-8 text-cream">
-      <h2 className="mb-6 font-display text-2xl font-bold tracking-tight">
-        What you can make
-      </h2>
+      <h2 className="mb-6 font-display text-2xl font-bold tracking-tight">What you can make</h2>
 
       {matches.isPending || pantry.isPending ? (
         <ResultsSkeleton />
@@ -40,7 +38,7 @@ export function ResultsList() {
         <div className="flex flex-col gap-4">
           <p className="text-cream/85">
             {pantryIsEmpty
-              ? "Add a few ingredients to see what you can make."
+              ? 'Add a few ingredients to see what you can make.'
               : "Nothing's close enough yet. Add a few more ingredients."}
           </p>
           {/* Only with something in the pantry: there is nothing to build a recipe from
@@ -51,7 +49,7 @@ export function ResultsList() {
         <Grouped matches={matches.data} />
       )}
     </section>
-  );
+  )
 }
 
 /**
@@ -65,12 +63,12 @@ export function ResultsList() {
  * Grouped, the gap says so itself, and the empty meals group is the honest place to offer
  * a generated recipe: it is the one case where there is genuinely nothing to cook.
  */
-const MEALS = "Meals";
-const SIDES = "Sides & extras";
+const MEALS = 'Meals'
+const SIDES = 'Sides & extras'
 
 function Grouped({ matches }: { matches: Match[] }) {
-  const meals = matches.filter((match) => match.is_meal);
-  const sides = matches.filter((match) => !match.is_meal);
+  const meals = matches.filter((match) => match.is_meal)
+  const sides = matches.filter((match) => !match.is_meal)
 
   return (
     <div className="flex flex-col gap-7">
@@ -95,16 +93,10 @@ function Grouped({ matches }: { matches: Match[] }) {
         </Group>
       )}
     </div>
-  );
+  )
 }
 
-function Group({
-  heading,
-  children,
-}: {
-  heading: string;
-  children: ReactNode;
-}) {
+function Group({ heading, children }: { heading: string; children: ReactNode }) {
   return (
     <section>
       <h3 className="mb-3 text-xs font-semibold tracking-[0.12em] text-cream/70 uppercase">
@@ -112,7 +104,7 @@ function Group({
       </h3>
       {children}
     </section>
-  );
+  )
 }
 
 /** `label` names the list itself: the heading is a sibling, so it cannot do that job. */
@@ -125,7 +117,7 @@ function MatchRows({ matches, label }: { matches: Match[]; label: string }) {
         </li>
       ))}
     </ul>
-  );
+  )
 }
 
 function RecipeCard({ match }: { match: Match }) {
@@ -151,21 +143,17 @@ function RecipeCard({ match }: { match: Match }) {
         </p>
         {match.missing.length > 0 && (
           <p className="mt-0.5 truncate text-sm text-cream/70">
-            Missing: {match.missing.join(", ")}
+            Missing: {match.missing.join(', ')}
           </p>
         )}
       </div>
     </Link>
-  );
+  )
 }
 
 function ResultsSkeleton() {
   return (
-    <div
-      className="flex flex-col gap-3"
-      aria-hidden="true"
-      data-testid="results-skeleton"
-    >
+    <div className="flex flex-col gap-3" aria-hidden="true" data-testid="results-skeleton">
       {[0, 1, 2, 3, 4, 5].map((row) => (
         <div key={row} className="rounded-3xl bg-cream/10 px-5 py-4">
           <div className="h-4 w-2/5 animate-pulse rounded-full bg-cream/20" />
@@ -173,5 +161,5 @@ function ResultsSkeleton() {
         </div>
       ))}
     </div>
-  );
+  )
 }

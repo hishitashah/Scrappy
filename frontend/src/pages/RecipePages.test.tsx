@@ -1,274 +1,227 @@
-import {
-  screen,
-  waitFor,
-  waitForElementToBeRemoved,
-  within,
-} from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import type { ReactElement } from "react";
-import { MemoryRouter, Route, Routes } from "react-router";
-import { describe, expect, it } from "vitest";
+import { screen, waitFor, waitForElementToBeRemoved, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import type { ReactElement } from 'react'
+import { MemoryRouter, Route, Routes } from 'react-router'
+import { describe, expect, it } from 'vitest'
 
-import { generatedRecipe, recipe, resetRecipe } from "../test/handlers";
-import { renderWithQuery } from "../test/render";
-import { RecipeIngredientsPage } from "./RecipeIngredientsPage";
-import { RecipeIntroPage } from "./RecipeIntroPage";
-import { RecipeStepsPage } from "./RecipeStepsPage";
+import { generatedRecipe, recipe, resetRecipe } from '../test/handlers'
+import { renderWithQuery } from '../test/render'
+import { RecipeIngredientsPage } from './RecipeIngredientsPage'
+import { RecipeIntroPage } from './RecipeIntroPage'
+import { RecipeStepsPage } from './RecipeStepsPage'
 
 /** Render one recipe page at its real URL, so `useParams` sees the id. */
-async function renderAt(
-  path: string,
-  element: ReactElement,
-  routePath: string,
-) {
+async function renderAt(path: string, element: ReactElement, routePath: string) {
   renderWithQuery(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route path={routePath} element={element} />
       </Routes>
     </MemoryRouter>,
-  );
-  await waitForElementToBeRemoved(() =>
-    screen.queryByTestId("recipe-skeleton"),
-  );
+  )
+  await waitForElementToBeRemoved(() => screen.queryByTestId('recipe-skeleton'))
 }
 
 /** The recipe's own ingredient list, not the substitutions picker's copy of the gaps. */
 const ingredientItems = () =>
-  within(screen.getByRole("list", { name: "Ingredients" })).getAllByRole(
-    "listitem",
-  );
+  within(screen.getByRole('list', { name: 'Ingredients' })).getAllByRole('listitem')
 
-const intro = () =>
-  renderAt("/recipes/42", <RecipeIntroPage />, "/recipes/:id");
+const intro = () => renderAt('/recipes/42', <RecipeIntroPage />, '/recipes/:id')
 const ingredients = () =>
-  renderAt(
-    "/recipes/42/ingredients",
-    <RecipeIngredientsPage />,
-    "/recipes/:id/ingredients",
-  );
-const steps = () =>
-  renderAt("/recipes/42/steps", <RecipeStepsPage />, "/recipes/:id/steps");
+  renderAt('/recipes/42/ingredients', <RecipeIngredientsPage />, '/recipes/:id/ingredients')
+const steps = () => renderAt('/recipes/42/steps', <RecipeStepsPage />, '/recipes/:id/steps')
 
-describe("recipe intro page", () => {
-  it("shows the title, tags and photo", async () => {
-    await intro();
+describe('recipe intro page', () => {
+  it('shows the title, tags and photo', async () => {
+    await intro()
 
-    expect(screen.getAllByText("Egg fried rice").length).toBeGreaterThan(0);
-    expect(screen.getByText("Rice")).toBeInTheDocument();
-    expect(screen.getByText("Chinese")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "Egg fried rice" })).toHaveAttribute(
-      "src",
-      "https://example.test/egg-fried-rice.jpg",
-    );
-  });
+    expect(screen.getAllByText('Egg fried rice').length).toBeGreaterThan(0)
+    expect(screen.getByText('Rice')).toBeInTheDocument()
+    expect(screen.getByText('Chinese')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Egg fried rice' })).toHaveAttribute(
+      'src',
+      'https://example.test/egg-fried-rice.jpg',
+    )
+  })
 
-  it("advances to the ingredients page, with a label not just an arrow", async () => {
-    await intro();
+  it('advances to the ingredients page, with a label not just an arrow', async () => {
+    await intro()
 
-    expect(screen.getByRole("link", { name: "Ingredients" })).toHaveAttribute(
-      "href",
-      "/recipes/42/ingredients",
-    );
-  });
+    expect(screen.getByRole('link', { name: 'Ingredients' })).toHaveAttribute(
+      'href',
+      '/recipes/42/ingredients',
+    )
+  })
 
-  it("omits the photo when the recipe has none", async () => {
-    resetRecipe(recipe({ image_url: null }));
+  it('omits the photo when the recipe has none', async () => {
+    resetRecipe(recipe({ image_url: null }))
 
-    await intro();
+    await intro()
 
-    expect(
-      screen.queryByRole("img", { name: "Egg fried rice" }),
-    ).not.toBeInTheDocument();
-  });
+    expect(screen.queryByRole('img', { name: 'Egg fried rice' })).not.toBeInTheDocument()
+  })
 
-  it("badges an AI-written recipe where the tags would be", async () => {
-    resetRecipe(generatedRecipe());
+  it('badges an AI-written recipe where the tags would be', async () => {
+    resetRecipe(generatedRecipe())
 
-    await intro();
+    await intro()
 
-    expect(screen.getByText("AI-generated")).toBeInTheDocument();
+    expect(screen.getByText('AI-generated')).toBeInTheDocument()
     // No category, no cuisine, no photo — and none invented to fill the gap (spec 10.12).
-    expect(screen.queryByText("Rice")).not.toBeInTheDocument();
-    expect(screen.queryByText("Chinese")).not.toBeInTheDocument();
-    expect(screen.queryByRole("img")).not.toBeInTheDocument();
-  });
+    expect(screen.queryByText('Rice')).not.toBeInTheDocument()
+    expect(screen.queryByText('Chinese')).not.toBeInTheDocument()
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+  })
 
-  it("does not badge an imported recipe", async () => {
-    await intro();
+  it('does not badge an imported recipe', async () => {
+    await intro()
 
-    expect(screen.queryByText("AI-generated")).not.toBeInTheDocument();
-  });
-});
+    expect(screen.queryByText('AI-generated')).not.toBeInTheDocument()
+  })
+})
 
-describe("recipe ingredients page", () => {
-  it("lists every ingredient with its measure, in recipe order", async () => {
-    await ingredients();
+describe('recipe ingredients page', () => {
+  it('lists every ingredient with its measure, in recipe order', async () => {
+    await ingredients()
 
-    const items = ingredientItems();
-    expect(items).toHaveLength(6);
-    expect(items[0]).toHaveTextContent("Rice — 2 cups");
-    expect(items[1]).toHaveTextContent("Egg — 3");
-    expect(items[5]).toHaveTextContent("Salt");
-  });
+    const items = ingredientItems()
+    expect(items).toHaveLength(6)
+    expect(items[0]).toHaveTextContent('Rice — 2 cups')
+    expect(items[1]).toHaveTextContent('Egg — 3')
+    expect(items[5]).toHaveTextContent('Salt')
+  })
 
-  it("counts what the user has", async () => {
-    await ingredients();
+  it('counts what the user has', async () => {
+    await ingredients()
 
-    expect(screen.getByText("You have 4 of 6")).toBeInTheDocument();
-  });
+    expect(screen.getByText('You have 4 of 6')).toBeInTheDocument()
+  })
 
-  it("offers substitutions here, and only here", async () => {
+  it('offers substitutions here, and only here', async () => {
     // The panel's own behaviour has its own tests; this one just proves it is mounted on
     // the page that shows the gaps, and not on the others.
-    await ingredients();
+    await ingredients()
 
-    expect(
-      screen.getByRole("button", { name: "Suggest substitutions" }),
-    ).toBeInTheDocument();
-  });
+    expect(screen.getByRole('button', { name: 'Suggest substitutions' })).toBeInTheDocument()
+  })
 
-  it("marks missing ingredients distinctly from owned ones", async () => {
-    await ingredients();
+  it('marks missing ingredients distinctly from owned ones', async () => {
+    await ingredients()
 
-    const items = ingredientItems();
+    const items = ingredientItems()
     // Owned rows carry no "missing" tag; the two the user lacks do.
-    expect(within(items[0]!).queryByText("missing")).not.toBeInTheDocument();
-    expect(within(items[4]!).getByText("missing")).toBeInTheDocument();
-    expect(within(items[5]!).getByText("missing")).toBeInTheDocument();
-  });
+    expect(within(items[0]!).queryByText('missing')).not.toBeInTheDocument()
+    expect(within(items[4]!).getByText('missing')).toBeInTheDocument()
+    expect(within(items[5]!).getByText('missing')).toBeInTheDocument()
+  })
 
-  it("offers to list a missing ingredient, and only a missing one", async () => {
+  it('offers to list a missing ingredient, and only a missing one', async () => {
     // F9 (spec 10.13). The buttons' own behaviour is tested in AddToList.test.tsx; this
     // proves which rows get one, and that the "missing" mark survives beside it.
-    await ingredients();
+    await ingredients()
 
-    const items = ingredientItems();
-    expect(
-      within(items[0]!).queryByRole("button", { name: "Add to list" }),
-    ).not.toBeInTheDocument();
-    expect(
-      within(items[4]!).getByRole("button", { name: "Add to list" }),
-    ).toBeInTheDocument();
-    expect(within(items[4]!).getByText("missing")).toBeInTheDocument();
+    const items = ingredientItems()
+    expect(within(items[0]!).queryByRole('button', { name: 'Add to list' })).not.toBeInTheDocument()
+    expect(within(items[4]!).getByRole('button', { name: 'Add to list' })).toBeInTheDocument()
+    expect(within(items[4]!).getByText('missing')).toBeInTheDocument()
 
-    expect(
-      screen.getByRole("button", { name: "Add all 2 to list" }),
-    ).toBeInTheDocument();
-  });
+    expect(screen.getByRole('button', { name: 'Add all 2 to list' })).toBeInTheDocument()
+  })
 
-  it("corrects the recipe when the cook says they have a missing ingredient", async () => {
+  it('corrects the recipe when the cook says they have a missing ingredient', async () => {
     // F7's other answer to a gap (spec 10.11): "I have this" writes to the pantry, so the
     // fix reaches everything that reads it rather than only hiding the row. This is the
     // whole reason it exists instead of just a checkbox, so it is asserted end to end.
-    const user = userEvent.setup();
-    await ingredients();
+    const user = userEvent.setup()
+    await ingredients()
 
-    expect(screen.getByText("You have 4 of 6")).toBeInTheDocument();
-    expect(ingredientItems()).toHaveLength(6);
+    expect(screen.getByText('You have 4 of 6')).toBeInTheDocument()
+    expect(ingredientItems()).toHaveLength(6)
 
-    const gaps = screen.getByRole("list", { name: "What to substitute" });
-    await user.click(
-      within(gaps).getAllByRole("button", { name: "I have this" })[0]!,
-    );
+    const gaps = screen.getByRole('list', { name: 'What to substitute' })
+    await user.click(within(gaps).getAllByRole('button', { name: 'I have this' })[0]!)
 
     // The count comes from the refetched recipe, not from local state: the ingredient is
     // genuinely owned now, which is what makes the gap disappear from the picker too.
-    expect(await screen.findByText("You have 5 of 6")).toBeInTheDocument();
-    await waitFor(() =>
-      expect(within(gaps).queryByText("Olive Oil")).not.toBeInTheDocument(),
-    );
+    expect(await screen.findByText('You have 5 of 6')).toBeInTheDocument()
+    await waitFor(() => expect(within(gaps).queryByText('Olive Oil')).not.toBeInTheDocument())
     // And it stops being offered for the grocery list, for the same reason.
-    expect(
-      screen.getByRole("button", { name: "Add all 1 to list" }),
-    ).toBeInTheDocument();
-  });
+    expect(screen.getByRole('button', { name: 'Add all 1 to list' })).toBeInTheDocument()
+  })
 
-  it("moves forward to the steps and back to the overview", async () => {
-    await ingredients();
+  it('moves forward to the steps and back to the overview', async () => {
+    await ingredients()
 
-    expect(screen.getByRole("link", { name: "Instructions" })).toHaveAttribute(
-      "href",
-      "/recipes/42/steps",
-    );
-    expect(screen.getByRole("link", { name: "Overview" })).toHaveAttribute(
-      "href",
-      "/recipes/42",
-    );
-  });
-});
+    expect(screen.getByRole('link', { name: 'Instructions' })).toHaveAttribute(
+      'href',
+      '/recipes/42/steps',
+    )
+    expect(screen.getByRole('link', { name: 'Overview' })).toHaveAttribute('href', '/recipes/42')
+  })
+})
 
-describe("recipe steps page", () => {
-  it("does not offer substitutions", async () => {
-    await steps();
+describe('recipe steps page', () => {
+  it('does not offer substitutions', async () => {
+    await steps()
 
-    expect(
-      screen.queryByRole("button", { name: "Suggest substitutions" }),
-    ).not.toBeInTheDocument();
-  });
+    expect(screen.queryByRole('button', { name: 'Suggest substitutions' })).not.toBeInTheDocument()
+  })
 
-  it("shows the numbered steps in order", async () => {
-    await steps();
+  it('shows the numbered steps in order', async () => {
+    await steps()
 
-    const items = screen.getAllByRole("listitem");
+    const items = screen.getAllByRole('listitem')
     expect(items.map((item) => item.textContent)).toEqual([
-      "Boil the rice.",
-      "Fry the eggs.",
-      "Combine and serve.",
-    ]);
-  });
+      'Boil the rice.',
+      'Fry the eggs.',
+      'Combine and serve.',
+    ])
+  })
 
-  it("links to the video and the original recipe", async () => {
-    await steps();
+  it('links to the video and the original recipe', async () => {
+    await steps()
 
-    expect(screen.getByRole("link", { name: /Watch video/ })).toHaveAttribute(
-      "href",
-      "https://example.test/video",
-    );
-    expect(
-      screen.getByRole("link", { name: /Original recipe/ }),
-    ).toHaveAttribute("href", "https://example.test/source");
-  });
+    expect(screen.getByRole('link', { name: /Watch video/ })).toHaveAttribute(
+      'href',
+      'https://example.test/video',
+    )
+    expect(screen.getByRole('link', { name: /Original recipe/ })).toHaveAttribute(
+      'href',
+      'https://example.test/source',
+    )
+  })
 
-  it("omits the links when the recipe has neither", async () => {
-    resetRecipe(recipe({ youtube_url: null, source_url: null }));
+  it('omits the links when the recipe has neither', async () => {
+    resetRecipe(recipe({ youtube_url: null, source_url: null }))
 
-    await steps();
+    await steps()
 
-    expect(
-      screen.queryByRole("link", { name: /Watch video/ }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("link", { name: /Original recipe/ }),
-    ).not.toBeInTheDocument();
-  });
+    expect(screen.queryByRole('link', { name: /Watch video/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Original recipe/ })).not.toBeInTheDocument()
+  })
 
-  it("goes back to the ingredients and ends the flow at the results", async () => {
-    await steps();
+  it('goes back to the ingredients and ends the flow at the results', async () => {
+    await steps()
 
-    expect(screen.getByRole("link", { name: "Ingredients" })).toHaveAttribute(
-      "href",
-      "/recipes/42/ingredients",
-    );
-    expect(
-      screen.getByRole("link", { name: "Back to results" }),
-    ).toHaveAttribute("href", "/");
-  });
-});
+    expect(screen.getByRole('link', { name: 'Ingredients' })).toHaveAttribute(
+      'href',
+      '/recipes/42/ingredients',
+    )
+    expect(screen.getByRole('link', { name: 'Back to results' })).toHaveAttribute('href', '/')
+  })
+})
 
-describe("a recipe that does not exist", () => {
+describe('a recipe that does not exist', () => {
   it.each([
-    ["intro", intro],
-    ["ingredients", ingredients],
-    ["steps", steps],
+    ['intro', intro],
+    ['ingredients', ingredients],
+    ['steps', steps],
   ])('shows "Recipe not found" on the %s page', async (_name, render) => {
-    resetRecipe(null);
+    resetRecipe(null)
 
-    await render();
+    await render()
 
-    expect(screen.getByText("Recipe not found")).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "Back to results" }),
-    ).toHaveAttribute("href", "/");
-  });
-});
+    expect(screen.getByText('Recipe not found')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Back to results' })).toHaveAttribute('href', '/')
+  })
+})

@@ -16,38 +16,34 @@
  *   still reporting "you have 4 of 6" and the grocery list still offering to buy it.
  */
 
-import { useState } from "react";
+import { useState } from 'react'
 
-import { useAddPantryItems, useSubstitutions } from "../api/hooks";
-import type {
-  RecipeDetail,
-  RecipeIngredient,
-  Substitution,
-} from "../api/types";
-import { AiProblem } from "./AiNote";
+import { useAddPantryItems, useSubstitutions } from '../api/hooks'
+import type { RecipeDetail, RecipeIngredient, Substitution } from '../api/types'
+import { AiProblem } from './AiNote'
 
 export function SubstitutionsPanel({ recipe }: { recipe: RecipeDetail }) {
-  const missing = recipe.ingredients.filter((ingredient) => !ingredient.owned);
-  const substitutions = useSubstitutions(recipe.id);
+  const missing = recipe.ingredients.filter((ingredient) => !ingredient.owned)
+  const substitutions = useSubstitutions(recipe.id)
 
   // Which boxes are *un*ticked, rather than which are ticked. Everything is asked about by
   // default, and that stays true for a row this component has not seen before: an
   // ingredient arriving in a refetch is included without the state having to be rebuilt,
   // and one that leaves — because "I have this" was pressed — takes nothing stale with it.
-  const [excluded, setExcluded] = useState<ReadonlySet<number>>(new Set());
+  const [excluded, setExcluded] = useState<ReadonlySet<number>>(new Set())
 
-  const asked = missing.filter((ingredient) => !excluded.has(ingredient.id));
+  const asked = missing.filter((ingredient) => !excluded.has(ingredient.id))
 
   // No gap, no question. An absent button explains itself; a disabled one invites a click
   // and then says nothing.
-  if (missing.length === 0) return null;
+  if (missing.length === 0) return null
 
   const toggle = (id: number) =>
     setExcluded((current) => {
-      const next = new Set(current);
-      if (!next.delete(id)) next.add(id);
-      return next;
-    });
+      const next = new Set(current)
+      if (!next.delete(id)) next.add(id)
+      return next
+    })
 
   return (
     <div className="mt-7 border-t border-cream/15 pt-6">
@@ -62,20 +58,18 @@ export function SubstitutionsPanel({ recipe }: { recipe: RecipeDetail }) {
 
           <button
             type="button"
-            onClick={() =>
-              substitutions.mutate(asked.map((ingredient) => ingredient.id))
-            }
+            onClick={() => substitutions.mutate(asked.map((ingredient) => ingredient.id))}
             disabled={substitutions.isPending || asked.length === 0}
             className="mt-4 rounded-full bg-cream px-5 py-2 font-medium text-forest-dark transition hover:bg-cream-deep disabled:opacity-70"
           >
             {/* The label carries the wait: an Opus call takes a few seconds, and a button
                 that looks unchanged reads as a button that didn't work. */}
             {substitutions.isPending
-              ? "Thinking…"
+              ? 'Thinking…'
               : /* The count appears only once the cook has narrowed it down, so the
                    ordinary case keeps the plain label it has always had. */
                 asked.length === missing.length
-                ? "Suggest substitutions"
+                ? 'Suggest substitutions'
                 : `Suggest substitutions for ${asked.length}`}
           </button>
 
@@ -93,18 +87,14 @@ export function SubstitutionsPanel({ recipe }: { recipe: RecipeDetail }) {
             error={substitutions.error}
             dailyLimit="You've used today's suggestions — try again tomorrow."
             failed="Couldn't get suggestions just now."
-            onRetry={() =>
-              substitutions.mutate(asked.map((ingredient) => ingredient.id))
-            }
+            onRetry={() => substitutions.mutate(asked.map((ingredient) => ingredient.id))}
           />
         )}
 
-        {substitutions.data && (
-          <Suggestions suggestions={substitutions.data.suggestions} />
-        )}
+        {substitutions.data && <Suggestions suggestions={substitutions.data.suggestions} />}
       </div>
     </div>
-  );
+  )
 }
 
 /** The missing ingredients, each with a box to untick and a way to say "I have this". */
@@ -114,10 +104,10 @@ function MissingPicker({
   onToggle,
   disabled,
 }: {
-  missing: RecipeIngredient[];
-  excluded: ReadonlySet<number>;
-  onToggle: (id: number) => void;
-  disabled: boolean;
+  missing: RecipeIngredient[]
+  excluded: ReadonlySet<number>
+  onToggle: (id: number) => void
+  disabled: boolean
 }) {
   return (
     <fieldset disabled={disabled} className="disabled:opacity-60">
@@ -137,11 +127,7 @@ function MissingPicker({
                 onChange={() => onToggle(ingredient.id)}
                 className="size-4 shrink-0 accent-cream"
               />
-              <span
-                className={
-                  excluded.has(ingredient.id) ? "text-cream/50" : undefined
-                }
-              >
+              <span className={excluded.has(ingredient.id) ? 'text-cream/50' : undefined}>
                 {ingredient.display_name}
               </span>
             </label>
@@ -151,7 +137,7 @@ function MissingPicker({
         ))}
       </ul>
     </fieldset>
-  );
+  )
 }
 
 /**
@@ -162,7 +148,7 @@ function MissingPicker({
  * grocery list. That is the point of doing it here rather than unticking a box.
  */
 function HaveThisButton({ ingredient }: { ingredient: RecipeIngredient }) {
-  const addItems = useAddPantryItems();
+  const addItems = useAddPantryItems()
 
   return (
     <button
@@ -173,7 +159,7 @@ function HaveThisButton({ ingredient }: { ingredient: RecipeIngredient }) {
     >
       I have this
     </button>
-  );
+  )
 }
 
 function Suggestions({ suggestions }: { suggestions: Substitution[] }) {
@@ -182,23 +168,18 @@ function Suggestions({ suggestions }: { suggestions: Substitution[] }) {
       <h3 className="mb-1 text-xs font-semibold tracking-[0.12em] uppercase">
         AI-generated suggestions
       </h3>
-      <p className="mb-4 text-xs text-cream/65">
-        Ideas, not instructions — taste as you go.
-      </p>
+      <p className="mb-4 text-xs text-cream/65">Ideas, not instructions — taste as you go.</p>
 
       {suggestions.length === 0 ? (
         <p className="text-sm text-cream/85">
-          No good substitutes for what&apos;s missing here. This one needs a
-          shop.
+          No good substitutes for what&apos;s missing here. This one needs a shop.
         </p>
       ) : (
         <ul className="flex flex-col gap-4">
           {suggestions.map((suggestion) => (
             <li key={suggestion.missing_ingredient}>
               <p className="flex flex-wrap items-baseline gap-x-2 font-medium">
-                <span className="text-cream/70">
-                  {suggestion.missing_ingredient}
-                </span>
+                <span className="text-cream/70">{suggestion.missing_ingredient}</span>
                 <span aria-hidden="true" className="text-cream/50">
                   →
                 </span>
@@ -217,7 +198,7 @@ function Suggestions({ suggestions }: { suggestions: Substitution[] }) {
         </ul>
       )}
     </section>
-  );
+  )
 }
 
 /* The failure states and the dashed AI frame live in AiNote.tsx, shared with F8. */
