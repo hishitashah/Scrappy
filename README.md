@@ -10,7 +10,7 @@ Most recipe sites start from a recipe and send you shopping. Scrappy works backw
 
 ## Live demo
 
-**<https://d3co1qxd5fhw9l.cloudfront.net>**
+Deployed Here: **<https://d3co1qxd5fhw9l.cloudfront.net>**
 
 It needs an account (email plus a verification code) and it's **desktop-only** — there's no mobile layout, by design. A cold start against a suspended database takes about five seconds; after that, requests are ~0.2s.
 
@@ -169,8 +169,6 @@ npm run dev        # http://localhost:5173
 npm test           # component and unit tests
 npm run lint && npm run typecheck && npm run build
 ```
-
-The AI features stay off locally until you set `AI_ENABLED=true` and an `ANTHROPIC_API_KEY` in `backend/.env`. Everything else — pantry, matching, recipes, the grocery list — works without a key, and the test suite never needs one.
 
 The `--legacy-peer-deps` flag works around a peer-resolution crash in npm 10.9.2 (`Cannot read properties of null (reading 'edgesOut')`). npm 12 fixes it, and `npm ci`, which CI uses, is unaffected.
 
