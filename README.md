@@ -18,7 +18,6 @@ It needs an account (email plus a verification code) and it's **desktop-only** �
 <img width="1470" height="725" alt="Screenshot 2026-11-17 at 10 06 56 AM" src="https://github.com/user-attachments/assets/f479eb44-c2b1-4b88-b379-4c8d9c02f607" />
 <img width="1470" height="724" alt="Screenshot 2026-11-17 at 10 07 09 AM" src="https://github.com/user-attachments/assets/a4d75581-af10-4594-a643-4b766efa0baa" />
 <img width="1470" height="725" alt="Screenshot 2026-11-17 at 10 08 05 AM" src="https://github.com/user-attachments/assets/f7e4f28d-be29-4a6e-b7b5-ff6e8c703625" />
-<img width="1470" height="725" alt="Screenshot 2026-11-17 at 10 09 11 AM" src="https://github.com/user-attachments/assets/0e574adc-0bca-495c-88b5-2e68468feb0d" />
 <img width="1470" height="724" alt="Screenshot 2026-11-17 at 10 09 41 AM" src="https://github.com/user-attachments/assets/893c2487-f8dd-4f5b-948a-84b007c3a4dc" />
 <img width="1470" height="725" alt="Screenshot 2026-11-17 at 10 10 15 AM" src="https://github.com/user-attachments/assets/772d42b4-17a8-4227-9ef5-045457342b61" />
 <img width="1468" height="720" alt="Screenshot 2026-11-17 at 10 11 00 AM" src="https://github.com/user-attachments/assets/49d6d419-dfed-43f4-bda3-747d0213c7c6" />
