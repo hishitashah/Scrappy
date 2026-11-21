@@ -14,10 +14,16 @@ Deployed Here: **<https://d3co1qxd5fhw9l.cloudfront.net>**
 
 It needs an account (email plus a verification code) and it's **desktop-only** — there's no mobile layout, by design. A cold start against a suspended database takes about five seconds; after that, requests are ~0.2s.
 
-<!-- TODO(M9): record docs/demo.gif — ~20s, empty pantry → type four ingredients →
-     results reorder → open a recipe → "Suggest substitutions" — then uncomment:
-![Scrappy in action](docs/demo.gif)
--->
+## App Walkthrough
+<img width="1470" height="725" alt="Screenshot 2026-11-17 at 10 06 56 AM" src="https://github.com/user-attachments/assets/f479eb44-c2b1-4b88-b379-4c8d9c02f607" />
+<img width="1470" height="724" alt="Screenshot 2026-11-17 at 10 07 09 AM" src="https://github.com/user-attachments/assets/a4d75581-af10-4594-a643-4b766efa0baa" />
+<img width="1470" height="725" alt="Screenshot 2026-11-17 at 10 08 05 AM" src="https://github.com/user-attachments/assets/f7e4f28d-be29-4a6e-b7b5-ff6e8c703625" />
+<img width="1470" height="724" alt="Screenshot 2026-11-17 at 10 09 41 AM" src="https://github.com/user-attachments/assets/893c2487-f8dd-4f5b-948a-84b007c3a4dc" />
+<img width="1470" height="725" alt="Screenshot 2026-11-17 at 10 10 15 AM" src="https://github.com/user-attachments/assets/772d42b4-17a8-4227-9ef5-045457342b61" />
+<img width="1468" height="720" alt="Screenshot 2026-11-17 at 10 11 00 AM" src="https://github.com/user-attachments/assets/49d6d419-dfed-43f4-bda3-747d0213c7c6" />
+<img width="1469" height="720" alt="Screenshot 2026-11-17 at 10 11 14 AM" src="https://github.com/user-attachments/assets/32285e62-c099-4fc4-b0e8-7d77e507027e" />
+<img width="1463" height="720" alt="Screenshot 2026-11-17 at 10 11 39 AM" src="https://github.com/user-attachments/assets/9b47250e-ca7b-405f-af3d-1807840ef1c7" />
+<img width="1467" height="726" alt="Screenshot 2026-11-17 at 10 11 47 AM" src="https://github.com/user-attachments/assets/67ca14cd-5e68-4991-a3f3-ce17016a5fec" />
 
 ## Features
 
