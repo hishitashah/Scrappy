@@ -20,6 +20,9 @@ dependencies = [
 [dependency-groups]
 dev = [
     "boto3>=1.43.110",
+    # The MCP server (mcp_server/) is a local developer tool, so its SDK lives here: the
+    # Lambda build exports with --no-dev and never ships it.
+    "mcp>=2.3.0",
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
     "ruff>=0.16.8",
@@ -42,4 +45,4 @@ testpaths = ["tests"]
 [tool.coverage.run]
 # Measure our code, not the virtualenv. No threshold is enforced (spec 10.6): the number
 # is there to be looked at, not to be gamed.
-source = ["app", "scripts"]
+source = ["app", "scripts", "mcp_server"]

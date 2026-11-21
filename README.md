@@ -81,11 +81,12 @@ flowchart LR
 | Hosting | AWS Lambda, S3, CloudFront, SSM Parameter Store, CloudWatch; Neon Postgres |
 | Infrastructure | Terraform |
 | CI/CD | GitHub Actions with AWS access via OIDC (no long-lived keys) |
+| AI assistant access | MCP server (`mcp` Python SDK) over stdio, local only |
 | Tooling | uv, ruff, pytest; Vitest, React Testing Library, MSW; Docker Compose |
 
 ## Testing
 
-**412 tests** — 286 pytest, 126 Vitest — written alongside each feature rather than after it.
+**430 tests** — 304 pytest, 126 Vitest — written alongside each feature rather than after it.
 
 | Backend (pytest) | Tests | | Frontend (Vitest) | Tests |
 |---|---:|---|---|---:|
@@ -95,7 +96,8 @@ flowchart LR
 | Config, logging & schema | 36 | | Pantry editor & results | 24 |
 | Matching & catalog import | 49 | | AI panels | 22 |
 | Auth & token rejection | 20 | | Routing, HTTP & errors | 16 |
-| **Total** | **286** | | **Total** | **126** |
+| MCP server tools | 18 | | | |
+| **Total** | **304** | | **Total** | **126** |
 
 **11 of the auth tests are invalid-token scenarios**: expired, wrong user pool, wrong app client, bad signature, an ID token used as an access token, a missing or malformed `Authorization` header, and a token missing required claims.
 
@@ -179,6 +181,42 @@ npm run lint && npm run typecheck && npm run build
 The `--legacy-peer-deps` flag works around a peer-resolution crash in npm 10.9.2 (`Cannot read properties of null (reading 'edgesOut')`). npm 12 fixes it, and `npm ci`, which CI uses, is unaffected.
 
 Stop the database with `docker compose down`; its data is kept in a Docker volume.
+
+## Use Scrappy from Claude (MCP)
+
+`backend/mcp_server/` is a [Model Context Protocol](https://modelcontextprotocol.io) server, so an AI assistant such as Claude Code or Claude Desktop can work with your pantry. Ask *"I just bought spinach and feta, what can I make?"* and Claude adds both to the pantry, ranks recipes with the app's own matching query, and puts what's still missing on the grocery list.
+
+| Tool | What it does |
+|---|---|
+| `get_pantry`, `add_to_pantry`, `remove_from_pantry` | Read and edit the pantry by ingredient name. Names go through the catalog's normalization and aliases; a name that matches nothing is reported back, never stored |
+| `find_recipes` | Recipes ranked by match percentage, with the same 50% floor and assumed staples as the app |
+| `get_recipe` | One recipe's ingredients, each marked have or missing, and its steps |
+| `add_missing_to_grocery_list`, `get_grocery_list` | Put a recipe's missing ingredients on the list; read the list |
+| `search_ingredients` | Find the catalog's name for something `add_to_pantry` couldn't place |
+
+**Every tool calls the same router function as the matching API endpoint**, so the two front doors can't drift apart: matching is still the one SQL query, buying something still takes it off the grocery list in the same transaction, and another user's generated recipes stay invisible. **The server makes no AI call of its own** — the assistant is the model; the server only counts and stores — so the $5/month guardrails are untouched. Read-only tools carry MCP's `readOnlyHint`, so a client can run them without asking and confirm the ones that write.
+
+It runs locally over stdio against the database in `DATABASE_URL`, as the same `shared-user` the local app uses (set `SCRAPPY_MCP_USER_ID` to change that), and refuses to start with `ENV=prod`. Its SDK is a dev dependency, so the Lambda package never carries it. After the local setup above:
+
+```bash
+# Claude Code
+claude mcp add scrappy -- uv --directory /absolute/path/to/scrappy/backend run python -m mcp_server
+```
+
+For Claude Desktop, add this to `claude_desktop_config.json` and restart the app:
+
+```json
+{
+  "mcpServers": {
+    "scrappy": {
+      "command": "uv",
+      "args": ["--directory", "/absolute/path/to/scrappy/backend", "run", "python", "-m", "mcp_server"]
+    }
+  }
+}
+```
+
+`tests/test_mcp_server.py` calls every tool through a real MCP client connected in-process, against real Postgres, inside the usual rolled-back transaction.
 
 ## Future Implementation
 
